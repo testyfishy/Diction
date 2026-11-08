@@ -531,17 +531,23 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 
 		// Passthrough: when the backend can accept Ogg/WebM directly, skip the
 		// ffmpeg decode and forward the accumulated Opus bytes as-is.
-		usePassthrough := isOpus && !backend.NeedsWAV
+		//
+		// Live features (live.go) need PCM while the user talks, so they turn the
+		// passthrough off: ffmpeg then decodes the Opus as it arrives.
+		previewParam := r.URL.Query().Get("preview") == "cloud"
+		builtinPreview := previewParam && PreviewRelay == nil && g.live.Preview
+		liveOn := (g.live.Segmented || builtinPreview) && (!isOpus || ffmpegAvail)
+		usePassthrough := isOpus && !backend.NeedsWAV && !liveOn
 		frameStats := streamFrameStats{opened: socketOpenedAt}
 		if g.debugStream {
-			log.Printf("ws debug: negotiated_subprotocol=%q codec=%s negotiation=%q passthrough=%v",
-				conn.Subprotocol(), codecTag, negotiationOutcome, usePassthrough)
+			log.Printf("ws debug: negotiated_subprotocol=%q codec=%s negotiation=%q passthrough=%v live=%v builtin_preview=%v",
+				conn.Subprotocol(), codecTag, negotiationOutcome, usePassthrough, liveOn, builtinPreview)
 		}
 
-		// --- Semaphore (NeedsWAV decode path only) ---
+		// --- Semaphore (ffmpeg decode path only) ---
 		// Every cloud backend is NeedsWAV, so cloud traffic spawns one ffmpeg
 		// process per concurrent dictation. The semaphore bounds that.
-		if isOpus && backend.NeedsWAV {
+		if isOpus && !usePassthrough {
 			sem := getOpusSem()
 			waitTimer := time.NewTimer(5 * time.Second)
 			defer waitTimer.Stop()
@@ -620,6 +626,23 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		}
 		var preview *previewPump
 		defer func() { preview.stop() }()
+
+		// The upstream language for a given client language (see the whole-clip POST).
+		upstreamLanguageFor := func(lang string) string {
+			if adResult.UpstreamLanguage != "" {
+				return adResult.UpstreamLanguage
+			}
+			if stripUpstreamLanguage {
+				return ""
+			}
+			return lang
+		}
+
+		// Live engine (live.go): opened on the first audio frame, by which time the
+		// context frame (custom words → prompt) has been read.
+		var live *liveEngine
+		var liveLanguage string
+		defer func() { live.close() }()
 
 		for {
 			// Idle watchdog: if no frame arrives within idleTimeout, call
@@ -708,6 +731,14 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					}
 					CloseWSWithTimeout(conn, wsCloseTooLarge, "audio too large", 2*time.Second)
 					return
+				}
+
+				if liveOn && live == nil {
+					liveLanguage = language
+					live = g.startLive(ctx, target, backend, upstreamLanguageFor(language), contextJSON, builtinPreview)
+					if builtinPreview {
+						preview = startPreviewPumpWith(ctx, conn, livePreview{live})
+					}
 				}
 
 				if isOpus && !containerSniffed {
@@ -801,11 +832,16 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 						ffmpegStdin = stdin
 						done := make(chan struct{})
 						stdoutDone = done
+						// The live engine sees the PCM as ffmpeg decodes it.
+						var sink io.Writer = &pcmBuf
+						if live != nil {
+							sink = io.MultiWriter(&pcmBuf, live)
+						}
 						go func() {
 							// Bound the decoded output to maxPCM+1 so an amplified
 							// decode cannot exhaust memory. The +1 lets us distinguish
 							// "exactly maxPCM" from "exceeded" after the drain.
-							io.Copy(&pcmBuf, io.LimitReader(stdout, maxPCM+1)) //nolint:errcheck
+							io.Copy(sink, io.LimitReader(stdout, maxPCM+1)) //nolint:errcheck
 							close(done)
 						}()
 					}
@@ -821,6 +857,9 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					}
 				} else {
 					pcmBuf.Write(data)
+					if live != nil {
+						live.Write(data) //nolint:errcheck — never fails
+					}
 					if wantPreview && preview == nil && len(data) > 0 {
 						preview = startPreviewPump(ctx, conn, language)
 						wantPreview = false
@@ -955,12 +994,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// canary_confident: inject known language code (e.g. "cs") for best accuracy.
 		// Other detect tiers: strip language so the model runs native auto-LID.
 		// Non-detect: pass through the client's language unchanged.
-		upstreamLanguage := language
-		if adResult.UpstreamLanguage != "" {
-			upstreamLanguage = adResult.UpstreamLanguage
-		} else if stripUpstreamLanguage {
-			upstreamLanguage = ""
-		}
+		upstreamLanguage := upstreamLanguageFor(language)
 
 		// Build the audio payload for proxyToBackend. The caller (us) is
 		// responsible for WAV wrapping — proxyToBackend just forwards whatever
@@ -1009,7 +1043,29 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		whisperPrompt := buildWhisperPrompt(contextJSON)
 		customWordsJSON := buildCustomWordsField(contextJSON)
 		sttStart := time.Now()
-		text, err := g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
+		var text string
+		// Segmented final: most of the audio was transcribed while the user talked.
+		// Anything short of a clean result falls through to the whole-clip request.
+		segmented := false
+		if live != nil && g.live.Segmented {
+			if language != liveLanguage {
+				log.Printf("live: language changed at done; using the whole clip")
+			} else {
+				t, ok, st := live.Finish(ctx)
+				segmented = ok
+				if ok {
+					text = t
+				}
+				if g.debugStream {
+					log.Printf("live: final ok=%v segments=%d segment_ms=%d wait=%dms tail=%.2fs tail_ms=%d",
+						ok, st.segments, st.segmentMs, st.waitMs, st.tailSec, st.tailMs)
+				}
+			}
+		}
+		live.close() // nothing may compete with the whole-clip request for the backend
+		if !segmented {
+			text, err = g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
+		}
 		sttMs := time.Since(sttStart).Milliseconds()
 		if err == nil && hasDegenerateRepetition(text) {
 			err = errSTTHallucination

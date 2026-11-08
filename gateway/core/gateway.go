@@ -99,6 +99,10 @@ type Gateway struct {
 	// frame timing — never audio, text or credentials. See streamdebug.go.
 	debugStream bool
 
+	// live configures the segmented final and the built-in preview (live.go).
+	// The zero value (every test Gateway literal) disables both.
+	live LiveConfig
+
 	// OnTranscription is an optional hook called after each successful transcription.
 	// model is the backend name, whisperMs is inference latency, chars is transcript length,
 	// durationMs is audio duration parsed from the WAV header (0 if unavailable).
@@ -158,6 +162,7 @@ func NewGateway(cfg Config) *Gateway {
 		keyRotationEnabled:    cfg.KeyRotationEnabled,
 		langCapabilityRouting: EnvBoolOrDefault("DICTION_LANG_CAPABILITY_ROUTING", true),
 		debugStream:           EnvBoolOrDefault("DICTION_DEBUG_STREAM", false),
+		live:                  LiveConfigFromEnv(),
 	}
 	g.startHealthChecker()
 	return g
