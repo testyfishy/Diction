@@ -424,6 +424,10 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// Check whether the client offered the subprotocol in the Upgrade request
 		// BEFORE Accept erases the header.
 		clientOfferedOpus := strings.Contains(r.Header.Get("Sec-WebSocket-Protocol"), opusSubprotocol)
+		if g.debugStream {
+			log.Printf("ws debug: open query=%s offered_subprotocols=%q", sanitizeStreamQuery(r.URL.Query()),
+				r.Header.Get("Sec-WebSocket-Protocol"))
+		}
 
 		acceptOpts := &websocket.AcceptOptions{
 			InsecureSkipVerify: true, // allow any origin for now
@@ -528,6 +532,11 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// Passthrough: when the backend can accept Ogg/WebM directly, skip the
 		// ffmpeg decode and forward the accumulated Opus bytes as-is.
 		usePassthrough := isOpus && !backend.NeedsWAV
+		frameStats := streamFrameStats{opened: socketOpenedAt}
+		if g.debugStream {
+			log.Printf("ws debug: negotiated_subprotocol=%q codec=%s negotiation=%q passthrough=%v",
+				conn.Subprotocol(), codecTag, negotiationOutcome, usePassthrough)
+		}
 
 		// --- Semaphore (NeedsWAV decode path only) ---
 		// Every cloud backend is NeedsWAV, so cloud traffic spawns one ffmpeg
@@ -683,6 +692,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			if msgType == websocket.MessageBinary {
 				framesRx++
 				audioBytesRx += int64(len(data))
+				frameStats.add(len(data))
 				if audioBytesRx > maxPCM {
 					if OnError != nil {
 						OnError(ctx, ErrorEvent{
@@ -851,6 +861,11 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			}
 		}
 
+		doneAt := time.Now()
+		if g.debugStream {
+			frameStats.logDone(codecTag)
+		}
+
 		// Recording is over: end the preview and join its writer before anything
 		// else is written, so no interim can follow the intent/result frames.
 		preview.stop()
@@ -1017,6 +1032,10 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			sttMs += retryMs
 		}
 		sttDoneAt := time.Now()
+		if g.debugStream {
+			log.Printf("ws debug: done_to_text=%dms stt=%dms audio=%dms chars=%d",
+				sttDoneAt.Sub(doneAt).Milliseconds(), sttMs, audioDurationMs, len(text))
+		}
 		// Whether the backend that finally served (after any retry) was sent the list: the
 		// cleanup's My Words shortlist trusts a boosted STT's spelling of a lone real name
 		// (requireCorroboration).

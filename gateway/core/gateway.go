@@ -95,6 +95,10 @@ type Gateway struct {
 	// Tests override the field directly after construction.
 	streamIdleTimeout time.Duration
 
+	// debugStream (DICTION_DEBUG_STREAM) logs each stream's query, subprotocols and
+	// frame timing — never audio, text or credentials. See streamdebug.go.
+	debugStream bool
+
 	// OnTranscription is an optional hook called after each successful transcription.
 	// model is the backend name, whisperMs is inference latency, chars is transcript length,
 	// durationMs is audio duration parsed from the WAV header (0 if unavailable).
@@ -153,6 +157,7 @@ func NewGateway(cfg Config) *Gateway {
 		pairingEnabled:        cfg.PairingEnabled,
 		keyRotationEnabled:    cfg.KeyRotationEnabled,
 		langCapabilityRouting: EnvBoolOrDefault("DICTION_LANG_CAPABILITY_ROUTING", true),
+		debugStream:           EnvBoolOrDefault("DICTION_DEBUG_STREAM", false),
 	}
 	g.startHealthChecker()
 	return g
