@@ -1,0 +1,27 @@
+# Learned automatically from hermes/bench/training (8 s pieces) by learn_rules.py; curated by its filters.
+tanukta place => tenecteplase
+leucosamide => lacosamide
+lurasidipen => lorazepam
+topramate => topiramate
+rimadjeppin => rimegepant
+onabotulinum toxin => onabotulinumtoxinA
+uktherlisumab => ocrelizumab
+o lysobuclono => oligoclonal bands
+c s f => CSF
+plasma pheresis => plasmapheresis
+pixaban => apixaban
+exenat alpha => andexanet alfa
+nikar teping => nicardipine
+inklesia run => inclisiran
+zetimibe => ezetimibe
+rilazole => riluzole
+ederbone => edaravone
+e m g => EMG
+peladema => papilledema
+fredcap => REDCap
+escalite => SQLite
+o old lockin => OAuth
+clubzam => clobazam
+le motrigeing => lamotrigine
+clavitybin => clevidipine
+lebetlo => labetalol

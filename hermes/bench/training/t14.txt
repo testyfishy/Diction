@@ -1,0 +1,1 @@
+Llama.cpp reads the GGUF model. The context window is set very large. Embeddings feed the RAG index. The MCP server speaks JSON. OAuth login works again.

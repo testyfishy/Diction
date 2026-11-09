@@ -49,23 +49,57 @@ its audio could hold).
 **So for dictation where accuracy matters, keep pieces off.** Where pieces fit is live text:
 draft words while you speak, with the final text still coming from the whole recording.
 
-## A fuzzy correction table helps a little
+## Can pieces be rescued? Lookup tables and a confidence fix
 
-A table applied to the text afterwards (not the hint list sent to the model): a word that is
-neither English nor already a known term is replaced by the closest term in the table, by
-spelling and by sound, if the match is close and unambiguous ("levitiracetam" →
-levetiracetam, "lebatalol" → labetalol, "pixaban" → apixaban).
+Two add-ons, tested on the same 16 dictations × 5 passes, every combination:
 
-| Table | Wrong words: whole | Wrong words: pieces | Terms spelled right: whole | Time per text |
-|---|---|---|---|---|
-| none | 35 | 62 | 80% | – |
-| 50 hint terms | 35 | 58 | 80% | 0.5 ms |
-| 268 terms | **33** | **55** | **82%** | 0.4 ms |
-| 268 + 5,000 look-alikes | 33 | 55 | 82% | 1.6 ms |
+- **Lookup table**, applied to the text after transcription. A word that is neither English
+  nor a known term is replaced by the closest term, by spelling and by sound, when the match
+  is close and unambiguous ("levitiracetam" → levetiracetam, "pixaban" → apixaban). Three sizes:
+  the 50-term hint list; a 268-term library; and the library plus 26 "heard → written" rules
+  learned automatically from 16 *separate* training dictations (different sentences, different
+  voices), so the rules were never tuned on the test.
+- **Confidence fix.** The draft from the pieces marks low-confidence words: neither English
+  nor a known term (the speech model reports no per-word confidence). Each piece holding one is
+  re-transcribed with the piece before and after it as context, and only the uncertain words are
+  swapped for what the wider window heard. Earlier pieces are fixed while you are still
+  talking; only the last two pieces wait until you stop.
 
-It never made a text worse (after requiring words of 5+ letters). A big table stays fast
-(it is indexed), but a table full of look-alike terms starts making pointless swaps, so the
-table should hold real terms you use. Tools: `hermes/bench/fuzzyfix.py`, `eval_fix.py`.
+| Mode | Wrong words | Terms spelled right | Model time after stop |
+|---|---|---|---|
+| Whole recording (upstream) | 5.7% | 79% | 1.27 s |
+| Whole recording + best table | **5.4%** | 84% | 1.27 s |
+| Pieces | 10.1% | 72% | **0.36 s** |
+| Pieces + 50-term table | 9.5% | 76% | 0.36 s |
+| Pieces + 268-term table | 9.0% | 80% | 0.36 s |
+| Pieces + 268 terms + learned rules | 8.6% | 81% | 0.36 s |
+| Pieces + confidence fix | 6.5% | 81% | 1.51 s |
+| Pieces + 50-term table + confidence fix | 6.2% | 83% | 1.51 s |
+| Pieces + 268-term table + confidence fix | 6.2% | **85%** | 1.38 s |
+| Pieces + 268 terms + learned rules + confidence fix | 6.2% | **85%** | 1.29 s |
+
+What this shows:
+
+- **Tables alone help, but not enough:** 10.1% → 8.6% wrong words, at no cost in time (under
+  2 ms; the table is indexed, so even 5,000 terms stay fast). Fill it with real terms: a table
+  padded with look-alikes makes pointless swaps.
+- **The confidence fix closes most of the gap:** 6.2% wrong words, against 5.7% for the whole
+  recording, and the best term spelling of any mode (85%). It improved 155 clip-passes and made
+  20 worse (out of 320).
+- **But on these short dictations it is not faster than the whole recording.** With 17–28 s
+  clips there are only 2–3 pieces, so the window re-checked after you stop is most of the
+  recording. The approach should pay off on longer dictations, where that window stays at two
+  pieces while the whole recording keeps growing. That is not measured yet.
+- **Learned rules must be curated.** Raw learning also proposed "it figures → IVIG" and "of a
+  tumor → ofatumumab"; the learner now rejects any rule whose heard words are all ordinary
+  English.
+
+"Model time" is the speech model's own time, measured in one session for all modes. The
+end-to-end wait adds network and gateway overhead and grows when the GPU is shared (the bench
+above measured 0.86 s for pieces and 2.66 s for the whole recording under load).
+
+Tools: `hermes/bench/fuzzyfix.py` (table), `learn_rules.py`, `sim_repair.py` (the matrix
+above), `training_set.py`, `learned-rules.txt`.
 
 ## Settings (environment variables, all off by default)
 

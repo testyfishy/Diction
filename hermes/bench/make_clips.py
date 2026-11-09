@@ -70,16 +70,18 @@ def ffmpeg(*args):
 
 
 def main():
-    """make_clips.py OUT_DIR TTS_URL [standard]: the 4-clip set, or the 16-clip standard set
+    """make_clips.py OUT_DIR TTS_URL [standard|training]: the 4-clip set, the 16-clip standard set
     (standard_set.py, two voices; also writes <name>.terms, the target terms to score)."""
     if len(sys.argv) < 3:
-        sys.exit("usage: make_clips.py OUT_DIR TTS_URL [standard]")
+        sys.exit("usage: make_clips.py OUT_DIR TTS_URL [standard|training]")
     out, url = sys.argv[1], sys.argv[2]
     clips = {name: (VOICE, [], parts) for name, parts in CLIPS.items()}
-    if len(sys.argv) > 3 and sys.argv[3] == "standard":
+    if len(sys.argv) > 3 and sys.argv[3] in ("standard", "training"):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from standard_set import STANDARD
-        clips = STANDARD
+        if sys.argv[3] == "standard":
+            from standard_set import STANDARD as clips
+        else:
+            from training_set import TRAINING as clips
     os.makedirs(out, exist_ok=True)
     for name, (voice, terms, parts) in clips.items():
         rng = random.Random(zlib.crc32(name.encode()))

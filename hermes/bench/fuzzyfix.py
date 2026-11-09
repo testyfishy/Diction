@@ -143,6 +143,26 @@ def correct(text, lex):
     return "".join(out), changes
 
 
+def load_rules(path):
+    """'heard => written' lines (# comments allowed) as whole-phrase, case-insensitive rules."""
+    rules = []
+    for line in open(path, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        if "=>" not in line:
+            continue
+        heard, written = (x.strip() for x in line.split("=>", 1))
+        if heard and written:
+            pat = r"(?i)(?<![\w-])" + r"[\s-]+".join(re.escape(w) for w in heard.split()) + r"(?![\w-])"
+            rules.append((re.compile(pat), written))
+    return rules
+
+
+def apply_rules(text, rules):
+    for rx, written in rules:
+        text = rx.sub(written, text)
+    return text
+
+
 def load_english(path="/usr/share/dict/words"):
     with open(path, encoding="utf-8", errors="ignore") as f:
         return {w.strip().lower() for w in f if w.strip()}
