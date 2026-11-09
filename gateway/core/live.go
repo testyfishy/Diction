@@ -43,6 +43,9 @@ type LiveConfig struct {
 	MinSegMs     int // segments shorter than this are never cut (DICTION_SEGMENT_MIN_MS)
 	MaxSegMs     int // past this length a short pause is enough (DICTION_SEGMENT_MAX_MS)
 	ShortPauseMs int // the pause needed past MaxSegMs
+	// The first piece is at least this long (DICTION_SEGMENT_FIRST_MIN_MS; 0 = MinSegMs), so a
+	// dictation shorter than it is transcribed whole and only longer ones go to pieces.
+	FirstMinSegMs int
 
 	PartialEveryMs int // preview: re-transcribe the open segment after this much new audio
 
@@ -65,6 +68,7 @@ func LiveConfigFromEnv() LiveConfig {
 		MinSegMs:       EnvIntOrDefault("DICTION_SEGMENT_MIN_MS", 8000),
 		MaxSegMs:       EnvIntOrDefault("DICTION_SEGMENT_MAX_MS", 20000),
 		ShortPauseMs:   EnvIntOrDefault("DICTION_SEGMENT_SHORT_PAUSE_MS", 300),
+		FirstMinSegMs:  EnvIntOrDefault("DICTION_SEGMENT_FIRST_MIN_MS", 0),
 		PartialEveryMs: EnvIntOrDefault("DICTION_PREVIEW_INTERVAL_MS", 1000),
 		PreviewURL:     EnvOrDefault("DICTION_PREVIEW_URL", ""),
 		PreviewModel:   EnvOrDefault("DICTION_PREVIEW_MODEL", ""),
@@ -179,11 +183,19 @@ func (d *pauseDetector) push(p []byte) []liveCut {
 		}
 		d.silence++
 		segMs := int((d.pos - d.segStart) * 1000 / liveSampleRate)
+		minMs, maxMs := d.cfg.MinSegMs, d.cfg.MaxSegMs
+		if d.segStart == 0 && d.cfg.FirstMinSegMs > minMs {
+			// First piece: longer minimum, and the maximum moves up by the same amount.
+			if maxMs > 0 {
+				maxMs += d.cfg.FirstMinSegMs - minMs
+			}
+			minMs = d.cfg.FirstMinSegMs
+		}
 		need := d.cfg.PauseMs
-		if d.cfg.MaxSegMs > 0 && segMs >= d.cfg.MaxSegMs {
+		if maxMs > 0 && segMs >= maxMs {
 			need = d.cfg.ShortPauseMs
 		}
-		if d.voiced*liveFrameMs >= liveMinVoicedMs && segMs >= d.cfg.MinSegMs && d.silence*liveFrameMs >= need {
+		if d.voiced*liveFrameMs >= liveMinVoicedMs && segMs >= minMs && d.silence*liveFrameMs >= need {
 			// Cut in the middle of the pause seen so far: both sides keep some silence.
 			at := d.silStart + int64(d.silence*liveFrameSamples/2)
 			cuts = append(cuts, liveCut{at: at, voiced: d.voiced, active: d.active})

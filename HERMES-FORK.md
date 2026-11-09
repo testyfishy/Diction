@@ -8,7 +8,8 @@ Upstream discussion: [DictionLabs/Diction#29](https://github.com/DictionLabs/Dic
 **Pieces mode** (`DICTION_SEGMENTED_FINAL=true`). Normally the gateway waits until you stop
 talking, then sends the whole recording to the speech model. In pieces mode it transcribes
 while you talk: at each pause it sends the piece since the last pause, so when you stop only
-the last piece is left.
+the last piece is left. With `DICTION_SEGMENT_FIRST_MIN_MS` the first piece is longer, so
+short dictations go whole and only long ones become pieces (15 s is the measured best).
 
 ```
 whole    [ you talk ............................ ] stop → [ transcribe everything ] → text
@@ -144,6 +145,60 @@ If you serve Qwen3-ASR through GUFO, send `max_tokens` with every transcription 
 Tools: `hermes/bench/long_set.py` (scripts), `make_clips.py ... long`, and the same `bench.sh`,
 `sim_repair.py` as above.
 
+## Where to switch: whole for the first 15 s, then pieces
+
+Short dictations are more accurate whole, long ones are faster and more accurate in pieces.
+So the gateway can now make the **first piece at least T seconds long**
+(`DICTION_SEGMENT_FIRST_MIN_MS`): a dictation shorter than T goes whole, a longer one becomes
+pieces after T. Which T?
+
+**Test.** All 24 test dictations (16 short, 8 two-minute) were also cut short at each natural
+pause, giving 130 dictations of 8–124 s. Each was transcribed whole, as plain pieces, and with
+T = 15, 20, 25, 30, 40 and 60 s; every mode through the lookup table. Cuts come from a Python
+port of the gateway's pause detector, which reproduces the gateway's logged cuts to 0.01 s. The
+results are weighted by the lengths of 73 real dictations from the gateway's debug log (64%
+under 15 s, 15% 15–25 s, 12% 25–40 s, 8% longer).
+
+![Where to switch: wrong words and model time after stop for whole, pieces and each switch point](assets/hermes/switch-results.svg)
+
+| Length | Whole | Pieces (no switch) | Whole first 15 s | Whole first 20 s |
+|---|---|---|---|---|
+| 15–25 s (27 dictations) | 5.3% · 1.53 s | 6.5% · 0.78 s | 6.0% · 0.82 s | 5.2% · 1.43 s |
+| 25–40 s (17) | 5.2% · 2.11 s | 6.3% · 0.66 s | **4.7% · 0.72 s** | 5.7% · 0.74 s |
+| 40–60 s (15) | 3.3% · 4.64 s | 3.3% · 0.81 s | **2.9% · 0.73 s** | 3.7% · 0.85 s |
+| 60–90 s (22) | 3.7% · 7.82 s | 3.4% · 0.80 s | **3.1% · 0.84 s** | 3.6% · 0.82 s |
+| 90–130 s (28) | 4.4% · 14.5 s | 3.6% · 0.60 s | **3.2% · 0.60 s** | 3.6% · 0.60 s |
+
+(wrong words · speech-model time after you stop; under 15 s every mode is the whole recording)
+
+**The arithmetic.**
+
+- *Speed.* The whole-recording wait fits `0.67 + 0.017·L + 0.00103·L²` seconds for L seconds of
+  speech: it passes 1 s at about 12 s of speech and 2 s at about 29 s, and keeps growing with
+  the square of the length. Pieces stay at 0.6–0.8 s whatever the length.
+- *Accuracy.* Plain pieces cost `3.89 − 0.99·ln(L)` wrong-word points against the whole
+  recording: +1.2 points at 15 s, +0.5 at 30 s, zero at **about 51 s** (80% interval 29–95 s,
+  bootstrap over clips). The cost comes from a short first piece that the model hears without
+  context.
+- *A 15 s first piece removes most of that cost.* Over the real length mix, whole-first-15-s
+  makes **4.14%** wrong words against 4.38% for the whole recording and 4.69% for plain pieces,
+  with a mean wait of **0.77 s** (whole: 1.63 s; worst length band 0.84 s against 14.5 s). It
+  is the most accurate and nearly the fastest option, so no trade-off weight is needed: every
+  later switch point is slower and no more accurate (T = 40 s ties on accuracy at 1.07 s).
+- The differences in accuracy are small and the intervals are wide: 15 s vs whole is −0.8
+  points (90% interval −1.6 to +0.2). On the 16 short, term-dense dictations alone, 15 s is
+  still 1.1 points worse than whole (20 s: 0.5 worse, not significant), because a 17–28 s
+  dictation leaves a short last piece. The speed gain is not in doubt.
+
+**Chosen: 15 s.** Live since 2026-11-09 with the lookup table and `max_tokens=512`: in a
+real-time check the two-minute dictations came back in 0.4–0.6 s with the full text, a 26 s one
+in 0.75 s, a 19 s one (whole) in 1.3 s. Note: the minimum is checked when the pause qualifies
+and the cut goes in the middle of the pause, so the first cut can land a few tenths of a
+second before T (the simulation does the same).
+
+Tools: `hermes/bench/sim_switch.py` (sweep), `analyze_switch.py` (bands, fits, real-mix
+weighting).
+
 ## Settings (environment variables, all off by default)
 
 | Variable | Default | Meaning |
@@ -151,6 +206,7 @@ Tools: `hermes/bench/long_set.py` (scripts), `make_clips.py ... long`, and the s
 | `DICTION_SEGMENTED_FINAL` | `false` | Pieces mode (fast, less accurate). |
 | `DICTION_PREVIEW` | `off` | `chunked` turns on live text for apps that ask. |
 | `DICTION_SEGMENT_PAUSE_MS` / `_MIN_MS` / `_MAX_MS` | 700 / 8000 / 20000 | Where pieces are cut. |
+| `DICTION_SEGMENT_FIRST_MIN_MS` | `0` (= `_MIN_MS`) | First piece at least this long: shorter dictations go whole. 15000 recommended. |
 | `DICTION_PREVIEW_URL` / `_MODEL` | session backend | Optional faster backend for live text. |
 | `DICTION_DEBUG_STREAM` | `false` | Log timings per dictation (never audio, text or keys). |
 

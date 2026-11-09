@@ -112,6 +112,24 @@ func TestPauseDetector_ShortPauseAfterMaxSegment(t *testing.T) {
 	}
 }
 
+func TestPauseDetector_FirstPieceMinimum(t *testing.T) {
+	cfg := testLiveConfig() // MinSegMs 3000
+	cfg.FirstMinSegMs = 6000
+	d := pauseDetector{cfg: cfg}
+	// 4 s speech + pause: enough for MinSegMs, not for the first piece's 6 s.
+	if cuts := d.push(pcmPattern(4000, 1000)); len(cuts) != 0 {
+		t.Fatalf("first piece cut before FirstMinSegMs: %+v", cuts)
+	}
+	// 2 s more speech + pause: past 6 s, so the first cut comes.
+	if cuts := d.push(pcmPattern(2000, 1000)); len(cuts) != 1 {
+		t.Fatalf("want the first cut, got %+v", cuts)
+	}
+	// Later pieces use MinSegMs again: 3.5 s speech + pause cuts.
+	if cuts := d.push(pcmPattern(3500, 1000)); len(cuts) != 1 {
+		t.Fatalf("want a 3 s-minimum cut after the first piece, got %+v", cuts)
+	}
+}
+
 // --- engine ---
 
 type fakeASR struct {

@@ -17,14 +17,22 @@ Full results, settings and how to reproduce every test:
 
 ![Two-minute dictations: wrong words and speech-model time after you stop, by mode](assets/hermes/long-results.svg)
 
+**Where to switch from whole to pieces** (130 dictations of 8–124 s, weighted to real use):
+
+![Where to switch: wrong words and model time after stop for whole, pieces and each switch point](assets/hermes/switch-results.svg)
+
 - **Whole**: upstream behaviour, the whole recording is transcribed after you stop.
   **Pieces**: transcribed at each pause while you talk, so only the last piece is left.
   **Table**: a fuzzy lookup table of your terms fixes near-miss spellings (under 2 ms).
   **Fix**: low-confidence words in the pieces are re-checked with the audio around them.
-- **Short dictations:** pieces are 3.5× faster but make almost twice the errors. Table + fix
-  bring the errors back down, but also cost the speed back.
+- **Short dictations:** pieces are 3.5× faster but make almost twice the errors.
 - **Two-minute dictations:** pieces are 35× faster (0.4 s vs 14 s) *and* more accurate
   (3.6% vs 4.5% wrong words; 3.0% with table + fix).
+- **Running now:** whole for the first 15 s, then pieces, with the table. On real dictation
+  lengths: 4.14% wrong words (whole: 4.38%), 0.77 s mean wait (whole: 1.63 s; at 2 minutes
+  0.6 s instead of 14.5 s). The whole-recording wait grows with the square of the length;
+  plain pieces only stop costing accuracy at about 51 s, and a 15 s first piece removes most
+  of that cost.
 - **GUFO cuts long transcripts short by default** (~256-token reply cap: a 2-minute whole
   recording lost its last third). Send `max_tokens=512` with each request; pieces never hit it.
 
