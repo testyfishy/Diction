@@ -1,3 +1,44 @@
+## ⚡ Hermes fork: making self-hosted Diction faster on Strix Halo
+
+**This is a personal fork, not affiliated with DictionLabs.** I run Diction's self-hosted
+gateway on an AMD Strix Halo machine, with speech-to-text by **Qwen3-ASR-1.7B served by GUFO**,
+and I'm tuning it so the text comes back as fast as possible after you stop talking, without
+losing accuracy. All speech stays on my own machines.
+
+The work is on branch [`hermes/live-text`](https://github.com/testyfishy/Diction/tree/hermes/live-text).
+Full results, settings and how to reproduce every test:
+[HERMES-FORK.md](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md).
+
+**Short dictations so far** (16 test dictations of 17–28 s, mean of 5 passes each):
+
+```mermaid
+xychart-beta
+    title "Wrong words (%), lower is better"
+    x-axis ["Whole", "Whole + table", "Pieces", "Pieces + table", "Pieces + table + fix"]
+    y-axis 0 --> 11
+    bar [5.7, 5.4, 10.1, 8.6, 6.2]
+```
+
+```mermaid
+xychart-beta
+    title "Speech-model time after you stop (s), lower is better"
+    x-axis ["Whole", "Whole + table", "Pieces", "Pieces + table", "Pieces + table + fix"]
+    y-axis 0 --> 1.5
+    bar [1.27, 1.27, 0.36, 0.36, 1.29]
+```
+
+- **Whole**: upstream behaviour, the whole recording is transcribed after you stop.
+  **Pieces**: transcribed at each pause while you talk, so only the last piece is left.
+  **Table**: a fuzzy lookup table of your terms fixes near-miss spellings (under 2 ms).
+  **Fix**: low-confidence words in the pieces are re-checked with the audio around them.
+- Pieces are 3.5× faster but make almost twice the errors. Table + fix bring the errors back
+  down, but on short dictations they also cost the speed back.
+- **Next: two-minute dictations**, where the whole-recording wait reaches 16 s in real use.
+
+*Everything below this section is the original Diction README.*
+
+---
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-light.png">
