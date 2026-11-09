@@ -35,6 +35,10 @@ Full results, settings and how to reproduce every test:
   of that cost.
 - **GUFO cuts long transcripts short by default** (~256-token reply cap: a 2-minute whole
   recording lost its last third). Send `max_tokens=512` with each request; pieces never hit it.
+- **Live trial, from 2026-11-09:** a few weeks of everyday use, judged against 72 real
+  whole-recording dictations (median wait 0.96 s, 2.3 s at 25–40 s, 16 s at 2 minutes) by
+  targets set in advance. Only timings and counts are logged, never text. See
+  [Live trial](HERMES-FORK.md#live-trial-from-2026-11-09-a-few-weeks-of-everyday-use).
 
 *Everything below this section is the original Diction README.*
 

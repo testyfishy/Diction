@@ -199,6 +199,49 @@ second before T (the simulation does the same).
 Tools: `hermes/bench/sim_switch.py` (sweep), `analyze_switch.py` (bands, fits, real-mix
 weighting).
 
+## Live trial (from 2026-11-09, a few weeks of everyday use)
+
+**What runs.** Diction gateway `hermes-5` with `DICTION_SEGMENTED_FINAL=true`,
+`DICTION_SEGMENT_FIRST_MIN_MS=15000` and `DICTION_DEBUG_STREAM=true` (timings only); speech
+gateway with the 268-term lookup table and `max_tokens=512`. No confidence fix. Rollback is
+one line each: the previous container files are kept beside the live ones (whole recording,
+speech gateway without the reply-cap fix).
+
+**Baseline from real use.** 72 dictations on the phone with the whole recording, the day
+before the switch (wait = from "stop" to text in the app's field, measured by the gateway):
+
+| Length | Dictations | Median wait | 90th percentile | Worst |
+|---|---|---|---|---|
+| under 15 s | 47 | 0.70 s | 1.73 s | 7.0 s |
+| 15–25 s | 11 | 1.39 s | 4.61 s | 5.0 s |
+| 25–40 s | 9 | 2.35 s | 4.19 s | 4.7 s |
+| 40–90 s | 4 | 3.8–5.7 s | | 7.4 s |
+| over 90 s | 1 | 16.3 s | | 16.3 s |
+
+All 72: median 0.96 s, mean 1.77 s. Fit: `0.73 + 0.032·L + 0.00073·L²` s, close to the
+bench fit above.
+
+**What is tracked.** `hermes/trial/collect.sh` copies the gateways' metric lines out of the
+journal into a private file on the server (only lengths, timings, piece counts, character
+counts and lookup-table swaps; never text, audio or keys), every 6 hours from a user timer
+(`hermes/trial/diction-trial.timer`). `hermes/bench/assess_live.py` turns it into: wait by length band
+against the baseline, time saved against the baseline fit, how dictations were served (whole
+under 15 s, pieces, fallback), piece failures and backend errors, table swaps, and characters
+per second of speech as a rough check that pieces do not drop words.
+
+**How it will be judged (set before the trial).**
+
+- *Speed:* median wait under 1 s for dictations of 25 s and more (baseline 2.3–16 s), and the
+  90th percentile over all dictations below the baseline's 4.2 s.
+- *Reliability:* piece failures plus fallbacks to whole under 2% of piece dictations; no rise
+  in backend errors.
+- *Completeness:* characters per second for pieces within about 10% of the baseline in the
+  same length band (the long-dictation baseline was made before the reply-cap fix, so very
+  long dictations may read higher now).
+- *Accuracy:* the log has no reference text, so wrong words are judged by the owner's use,
+  plus a re-run of the standard bench set at the end to catch model drift.
+- *Not counted:* dictations of 16 s or more that never pause after 15 s stay whole by design.
+
 ## Settings (environment variables, all off by default)
 
 | Variable | Default | Meaning |
@@ -208,7 +251,7 @@ weighting).
 | `DICTION_SEGMENT_PAUSE_MS` / `_MIN_MS` / `_MAX_MS` | 700 / 8000 / 20000 | Where pieces are cut. |
 | `DICTION_SEGMENT_FIRST_MIN_MS` | `0` (= `_MIN_MS`) | First piece at least this long: shorter dictations go whole. 15000 recommended. |
 | `DICTION_PREVIEW_URL` / `_MODEL` | session backend | Optional faster backend for live text. |
-| `DICTION_DEBUG_STREAM` | `false` | Log timings per dictation (never audio, text or keys). |
+| `DICTION_DEBUG_STREAM` | `false` | Log timings per dictation (never audio, text or keys). Needed for `hermes/trial/`. |
 
 ## How the test was done (reproducible)
 

@@ -1,0 +1,6 @@
+[Unit]
+Description=Collect Diction trial numbers from the journal
+
+[Service]
+Type=oneshot
+ExecStart=%h/diction-trial/collect.sh
