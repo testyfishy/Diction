@@ -55,7 +55,7 @@ func LiveConfigFromEnv() LiveConfig {
 		Segmented:      EnvBoolOrDefault("DICTION_SEGMENTED_FINAL", false),
 		Preview:        strings.EqualFold(EnvOrDefault("DICTION_PREVIEW", "off"), "chunked"),
 		PauseMs:        EnvIntOrDefault("DICTION_SEGMENT_PAUSE_MS", 700),
-		MinSegMs:       EnvIntOrDefault("DICTION_SEGMENT_MIN_MS", 3000),
+		MinSegMs:       EnvIntOrDefault("DICTION_SEGMENT_MIN_MS", 8000),
 		MaxSegMs:       EnvIntOrDefault("DICTION_SEGMENT_MAX_MS", 20000),
 		ShortPauseMs:   EnvIntOrDefault("DICTION_SEGMENT_SHORT_PAUSE_MS", 300),
 		PartialEveryMs: EnvIntOrDefault("DICTION_PREVIEW_INTERVAL_MS", 1000),
@@ -272,7 +272,94 @@ func (e *liveEngine) commit(to int64, text string) {
 	e.committed = to
 }
 
-func (e *liveEngine) committedText() string { return strings.Join(e.texts, " ") }
+func (e *liveEngine) committedText() string { return joinSegments(e.texts) }
+
+// Words that (almost) never end a sentence, and words that (almost) never start one.
+// A backend punctuates every segment as if it were complete, so a cut at a mid-sentence
+// pause comes back as "The plan is. After the MRI. To start…". These lists decide when
+// that full stop is an artefact of the cut. They are deliberately short: a word that can
+// end a sentence ("not", "her", "that", "will") or start one ("When", "After", "Then")
+// is left out, because joining two real sentences is worse than a stray full stop.
+var (
+	segDanglingEnd = setOf("a", "an", "the", "and", "or", "nor", "of", "to", "for", "with", "from",
+		"into", "is", "are", "was", "were", "been", "am", "if", "because", "than", "my", "our",
+		"your", "their", "shows", "showed", "including", "per", "plus", "versus", "vs")
+	segContinuingStart = setOf("and", "or", "nor", "to", "of", "than", "whom", "whose", "plus",
+		"versus", "including")
+)
+
+func setOf(words ...string) map[string]bool {
+	m := make(map[string]bool, len(words))
+	for _, w := range words {
+		m[w] = true
+	}
+	return m
+}
+
+func firstWord(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return strings.Trim(f[0], ",;:.!?")
+}
+
+func lastWord(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return strings.TrimRight(f[len(f)-1], ".,;:")
+}
+
+// keepCapital reports whether a segment's first word must keep its capital: "I", acronyms
+// (two or more capitals, like MRI or EEG) and words with digits.
+func keepCapital(w string) bool {
+	if w == "I" || strings.HasPrefix(w, "I'") {
+		return true
+	}
+	upper := 0
+	for _, r := range w {
+		if r >= '0' && r <= '9' {
+			return true
+		}
+		if r >= 'A' && r <= 'Z' {
+			upper++
+		}
+	}
+	return upper >= 2
+}
+
+// joinSegments joins segment texts, removing the full stop a cut put in mid-sentence:
+// when a segment ends in a word that rarely ends a sentence, or the next starts with a
+// word that rarely starts one, the stop goes and the next word is lowercased (unless it
+// is "I", an acronym or has digits). Question and exclamation marks are kept.
+func joinSegments(texts []string) string {
+	var b strings.Builder
+	for _, t := range texts {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString(t)
+			continue
+		}
+		prev := b.String()
+		next := firstWord(t)
+		if strings.HasSuffix(prev, ".") && !strings.HasSuffix(prev, "..") &&
+			(segDanglingEnd[strings.ToLower(lastWord(prev))] || segContinuingStart[strings.ToLower(next)]) {
+			b.Reset()
+			b.WriteString(strings.TrimSuffix(prev, "."))
+			if next != "" && !keepCapital(next) {
+				t = strings.ToLower(t[:1]) + t[1:]
+			}
+		}
+		b.WriteString(" ")
+		b.WriteString(t)
+	}
+	return b.String()
+}
 
 // emit publishes an interim, replacing any the writer has not taken yet. Caller holds mu.
 func (e *liveEngine) emit(text string) {
@@ -384,7 +471,7 @@ func (e *liveEngine) step() bool {
 	e.partialCancel = nil
 	// A segment may have committed meanwhile; this partial is then stale.
 	if err == nil && e.committed == from && !hasDegenerateRepetition(text) {
-		joined := strings.TrimSpace(e.committedText() + " " + strings.TrimSpace(text))
+		joined := joinSegments(append(append([]string(nil), e.texts...), text))
 		e.emit(joined)
 	}
 	e.mu.Unlock()
@@ -467,7 +554,7 @@ func (e *liveEngine) Finish(ctx context.Context) (string, bool, liveFinish) {
 		// Nothing heard, or the detector misjudged the audio: let the whole clip decide.
 		return "", false, st
 	}
-	return strings.Join(texts, " "), true, st
+	return joinSegments(texts), true, st
 }
 
 // Close stops the worker and any request in flight. Idempotent.

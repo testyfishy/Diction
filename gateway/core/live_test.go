@@ -476,3 +476,31 @@ func TestStreaming_SegmentedFinal_Opus(t *testing.T) {
 		t.Fatalf("backend got %q, want decoded audio.wav", name)
 	}
 }
+
+func TestJoinSegments_RepairsMidSentenceCuts(t *testing.T) {
+	// What GUFO returned, segment by segment, for a dictation with mid-sentence pauses.
+	got := joinSegments([]string{
+		"The plan for this patient is.", "After the repeat MRI.", "To start levetiracetam at a low dose and.",
+		"Titrate up over two weeks.", "If the EEG shows.", "Ongoing discharges.", "We will add lacosamide.",
+		"I also want a lipid panel.", "Copy Dr.", "Smith?", "Done.",
+	})
+	want := "The plan for this patient is after the repeat MRI to start levetiracetam at a low dose and " +
+		"titrate up over two weeks. If the EEG shows ongoing discharges. We will add lacosamide. " +
+		"I also want a lipid panel. Copy Dr. Smith? Done."
+	if got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}
+
+func TestJoinSegments_KeepsCapitalsThatMatter(t *testing.T) {
+	if got := joinSegments([]string{"Order an.", "MRI of the brain.", "And.", "I will call."}); got != "Order an MRI of the brain and I will call." {
+		t.Fatalf("got %q", got)
+	}
+	// Real sentence ends stay: "not", "her", "that" can end a sentence; "When" can start one.
+	if got := joinSegments([]string{"Ubrogepant did not.", "Her MRI was normal.", "I told her.", "When she called, I said that.", "Then we left."}); got != "Ubrogepant did not. Her MRI was normal. I told her. When she called, I said that. Then we left." {
+		t.Fatalf("got %q", got)
+	}
+	if got := joinSegments([]string{"", " Hello. ", ""}); got != "Hello." {
+		t.Fatalf("got %q", got)
+	}
+}
