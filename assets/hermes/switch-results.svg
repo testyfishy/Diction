@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 360" width="920" height="360" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-label="Switch point: wrong words and speech-model time after stop, by mode">
+<style>
+  .bg{fill:#fcfcfb}.t1{fill:#0b0b0b}.t2{fill:#52514e}.mu{fill:#898781}.grid{stroke:#e1e0d9}.bar{fill:#2a78d6}
+  @media (prefers-color-scheme: dark){.bg{fill:#1a1a19}.t1{fill:#f0efec}.t2{fill:#c3c2b7}.grid{stroke:#2c2c2a}.bar{fill:#3987e5}}
+</style>
+<rect class="bg" width="920" height="360" rx="8"/>
+<text class="t1" x="20" y="30" font-size="16" font-weight="600">Where to switch: 130 dictations of 8–124 s, weighted to 73 real dictation lengths</text>
+<text class="t2" x="20" y="91.5" font-size="13">Whole recording</text>
+<text class="t2" x="20" y="125.5" font-size="13">Pieces (no switch)</text>
+<text class="t2" x="20" y="159.5" font-size="13">Whole first 15 s, then pieces</text>
+<text class="t2" x="20" y="193.5" font-size="13">Whole first 20 s, then pieces</text>
+<text class="t2" x="20" y="227.5" font-size="13">Whole first 30 s, then pieces</text>
+<text class="t2" x="20" y="261.5" font-size="13">Whole first 40 s, then pieces</text>
+<text class="t2" x="20" y="295.5" font-size="13">Whole first 60 s, then pieces</text>
+<text class="t1" x="250" y="56" font-size="13" font-weight="600">Wrong words, weighted to real use (%)</text>
+<line class="grid" x1="250.0" x2="250.0" y1="70" y2="308" stroke-width="1"/>
+<text class="mu" x="250.0" y="324" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="370.0" x2="370.0" y1="70" y2="308" stroke-width="1"/>
+<text class="mu" x="370.0" y="324" font-size="11" text-anchor="middle">3</text>
+<line class="grid" x1="490.0" x2="490.0" y1="70" y2="308" stroke-width="1"/>
+<text class="mu" x="490.0" y="324" font-size="11" text-anchor="middle">6</text>
+<path class="bar" d="M250,78.0 h171.2 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-171.2 z"/>
+<text class="t1" x="431.2" y="91.5" font-size="12">4.38%</text>
+<path class="bar" d="M250,112.0 h183.6 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-183.6 z"/>
+<text class="t1" x="443.6" y="125.5" font-size="12">4.69%</text>
+<path class="bar" d="M250,146.0 h161.6 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-161.6 z"/>
+<text class="t1" x="421.6" y="159.5" font-size="12">4.14%</text>
+<path class="bar" d="M250,180.0 h172.8 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-172.8 z"/>
+<text class="t1" x="432.8" y="193.5" font-size="12">4.42%</text>
+<path class="bar" d="M250,214.0 h172.8 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-172.8 z"/>
+<text class="t1" x="432.8" y="227.5" font-size="12">4.42%</text>
+<path class="bar" d="M250,248.0 h161.2 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-161.2 z"/>
+<text class="t1" x="421.2" y="261.5" font-size="12">4.13%</text>
+<path class="bar" d="M250,282.0 h170.4 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-170.4 z"/>
+<text class="t1" x="430.4" y="295.5" font-size="12">4.36%</text>
+<text class="t1" x="590" y="56" font-size="13" font-weight="600">Mean model time after you stop (s)</text>
+<line class="grid" x1="590.0" x2="590.0" y1="70" y2="308" stroke-width="1"/>
+<text class="mu" x="590.0" y="324" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="710.0" x2="710.0" y1="70" y2="308" stroke-width="1"/>
+<text class="mu" x="710.0" y="324" font-size="11" text-anchor="middle">1</text>
+<line class="grid" x1="830.0" x2="830.0" y1="70" y2="308" stroke-width="1"/>
+<text class="mu" x="830.0" y="324" font-size="11" text-anchor="middle">2</text>
+<path class="bar" d="M590,78.0 h191.6 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-191.6 z"/>
+<text class="t1" x="791.6" y="91.5" font-size="12">1.63 s</text>
+<path class="bar" d="M590,112.0 h87.2 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-87.2 z"/>
+<text class="t1" x="687.2" y="125.5" font-size="12">0.76 s</text>
+<path class="bar" d="M590,146.0 h88.4 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-88.4 z"/>
+<text class="t1" x="688.4" y="159.5" font-size="12">0.77 s</text>
+<path class="bar" d="M590,180.0 h100.4 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-100.4 z"/>
+<text class="t1" x="700.4" y="193.5" font-size="12">0.87 s</text>
+<path class="bar" d="M590,214.0 h120.8 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-120.8 z"/>
+<text class="t1" x="720.8" y="227.5" font-size="12">1.04 s</text>
+<path class="bar" d="M590,248.0 h124.4 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-124.4 z"/>
+<text class="t1" x="724.4" y="261.5" font-size="12">1.07 s</text>
+<path class="bar" d="M590,282.0 h140.0 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-140.0 z"/>
+<text class="t1" x="740.0" y="295.5" font-size="12">1.20 s</text>
+<text class="mu" x="20" y="348" font-size="11">Lower is better in both. All modes use the lookup table. Qwen3-ASR-1.7B (GUFO) on AMD Strix Halo.</text>
+</svg>
