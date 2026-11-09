@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 292" width="880" height="292" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-label="Short dictations: wrong words and speech-model time after stop, by mode">
+<style>
+  .bg{fill:#fcfcfb}.t1{fill:#0b0b0b}.t2{fill:#52514e}.mu{fill:#898781}.grid{stroke:#e1e0d9}.bar{fill:#2a78d6}
+  @media (prefers-color-scheme: dark){.bg{fill:#1a1a19}.t1{fill:#f0efec}.t2{fill:#c3c2b7}.grid{stroke:#2c2c2a}.bar{fill:#3987e5}}
+</style>
+<rect class="bg" width="880" height="292" rx="8"/>
+<text class="t1" x="20" y="30" font-size="16" font-weight="600">Short dictations (16 clips of 17–28 s, mean of 5 passes)</text>
+<text class="t2" x="20" y="91.5" font-size="13">Whole recording (upstream)</text>
+<text class="t2" x="20" y="125.5" font-size="13">Whole + table</text>
+<text class="t2" x="20" y="159.5" font-size="13">Pieces</text>
+<text class="t2" x="20" y="193.5" font-size="13">Pieces + table</text>
+<text class="t2" x="20" y="227.5" font-size="13">Pieces + table + fix</text>
+<text class="t1" x="210" y="56" font-size="13" font-weight="600">Wrong words (%)</text>
+<line class="grid" x1="210.0" x2="210.0" y1="70" y2="240" stroke-width="1"/>
+<text class="mu" x="210.0" y="256" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="330.0" x2="330.0" y1="70" y2="240" stroke-width="1"/>
+<text class="mu" x="330.0" y="256" font-size="11" text-anchor="middle">6</text>
+<line class="grid" x1="450.0" x2="450.0" y1="70" y2="240" stroke-width="1"/>
+<text class="mu" x="450.0" y="256" font-size="11" text-anchor="middle">12</text>
+<path class="bar" d="M210,78.0 h110.0 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-110.0 z"/>
+<text class="t1" x="330.0" y="91.5" font-size="12">5.7%</text>
+<path class="bar" d="M210,112.0 h104.0 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-104.0 z"/>
+<text class="t1" x="324.0" y="125.5" font-size="12">5.4%</text>
+<path class="bar" d="M210,146.0 h198.0 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-198.0 z"/>
+<text class="t1" x="418.0" y="159.5" font-size="12">10.1%</text>
+<path class="bar" d="M210,180.0 h168.0 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-168.0 z"/>
+<text class="t1" x="388.0" y="193.5" font-size="12">8.6%</text>
+<path class="bar" d="M210,214.0 h120.0 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-120.0 z"/>
+<text class="t1" x="340.0" y="227.5" font-size="12">6.2%</text>
+<text class="t1" x="550" y="56" font-size="13" font-weight="600">Speech-model time after you stop (s)</text>
+<line class="grid" x1="550.0" x2="550.0" y1="70" y2="240" stroke-width="1"/>
+<text class="mu" x="550.0" y="256" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="670.0" x2="670.0" y1="70" y2="240" stroke-width="1"/>
+<text class="mu" x="670.0" y="256" font-size="11" text-anchor="middle">0.75</text>
+<line class="grid" x1="790.0" x2="790.0" y1="70" y2="240" stroke-width="1"/>
+<text class="mu" x="790.0" y="256" font-size="11" text-anchor="middle">1.5</text>
+<path class="bar" d="M550,78.0 h199.2 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-199.2 z"/>
+<text class="t1" x="759.2" y="91.5" font-size="12">1.27 s</text>
+<path class="bar" d="M550,112.0 h199.2 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-199.2 z"/>
+<text class="t1" x="759.2" y="125.5" font-size="12">1.27 s</text>
+<path class="bar" d="M550,146.0 h53.6 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-53.6 z"/>
+<text class="t1" x="613.6" y="159.5" font-size="12">0.36 s</text>
+<path class="bar" d="M550,180.0 h53.6 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-53.6 z"/>
+<text class="t1" x="613.6" y="193.5" font-size="12">0.36 s</text>
+<path class="bar" d="M550,214.0 h202.4 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-202.4 z"/>
+<text class="t1" x="762.4" y="227.5" font-size="12">1.29 s</text>
+<text class="mu" x="20" y="280" font-size="11">Lower is better in both. Speech model: Qwen3-ASR-1.7B served by GUFO on AMD Strix Halo.</text>
+</svg>

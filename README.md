@@ -9,23 +9,9 @@ The work is on branch [`hermes/live-text`](https://github.com/testyfishy/Diction
 Full results, settings and how to reproduce every test:
 [HERMES-FORK.md](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md).
 
-**Short dictations so far** (16 test dictations of 17–28 s, mean of 5 passes each):
+**Short dictations so far:**
 
-```mermaid
-xychart-beta
-    title "Wrong words (%), lower is better"
-    x-axis ["Whole", "Whole + table", "Pieces", "Pieces + table", "Pieces + table + fix"]
-    y-axis 0 --> 11
-    bar [5.7, 5.4, 10.1, 8.6, 6.2]
-```
-
-```mermaid
-xychart-beta
-    title "Speech-model time after you stop (s), lower is better"
-    x-axis ["Whole", "Whole + table", "Pieces", "Pieces + table", "Pieces + table + fix"]
-    y-axis 0 --> 1.5
-    bar [1.27, 1.27, 0.36, 0.36, 1.29]
-```
+![Short dictations: wrong words and speech-model time after you stop, by mode](assets/hermes/short-results.svg)
 
 - **Whole**: upstream behaviour, the whole recording is transcribed after you stop.
   **Pieces**: transcribed at each pause while you talk, so only the last piece is left.
