@@ -4,12 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
+	"io"
 	"log"
 	"math"
 	"net/url"
+	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Live transcription on the batch socket, for self-hosted backends.
@@ -33,9 +39,9 @@ type LiveConfig struct {
 	Segmented bool // DICTION_SEGMENTED_FINAL
 	Preview   bool // DICTION_PREVIEW=chunked
 
-	PauseMs     int // a pause this long ends a segment (DICTION_SEGMENT_PAUSE_MS)
-	MinSegMs    int // segments shorter than this are never cut (DICTION_SEGMENT_MIN_MS)
-	MaxSegMs    int // past this length a short pause is enough (DICTION_SEGMENT_MAX_MS)
+	PauseMs      int // a pause this long ends a segment (DICTION_SEGMENT_PAUSE_MS)
+	MinSegMs     int // segments shorter than this are never cut (DICTION_SEGMENT_MIN_MS)
+	MaxSegMs     int // past this length a short pause is enough (DICTION_SEGMENT_MAX_MS)
 	ShortPauseMs int // the pause needed past MaxSegMs
 
 	PartialEveryMs int // preview: re-transcribe the open segment after this much new audio
@@ -46,12 +52,13 @@ type LiveConfig struct {
 	PreviewModel string
 	PreviewAuth  string
 
-	Debug bool // DICTION_DEBUG_STREAM: log timings and cut decisions (never text)
+	Debug bool // set from DICTION_DEBUG_STREAM: log timings and cut decisions (never text)
 }
 
-// LiveConfigFromEnv reads the DICTION_SEGMENT*, DICTION_PREVIEW* and DICTION_DEBUG_STREAM variables.
+// LiveConfigFromEnv reads the DICTION_SEGMENT* and DICTION_PREVIEW* variables. Values
+// below a sane minimum are raised to it (a 0 ms preview interval would hammer the backend).
 func LiveConfigFromEnv() LiveConfig {
-	return LiveConfig{
+	c := LiveConfig{
 		Segmented:      EnvBoolOrDefault("DICTION_SEGMENTED_FINAL", false),
 		Preview:        strings.EqualFold(EnvOrDefault("DICTION_PREVIEW", "off"), "chunked"),
 		PauseMs:        EnvIntOrDefault("DICTION_SEGMENT_PAUSE_MS", 700),
@@ -62,8 +69,18 @@ func LiveConfigFromEnv() LiveConfig {
 		PreviewURL:     EnvOrDefault("DICTION_PREVIEW_URL", ""),
 		PreviewModel:   EnvOrDefault("DICTION_PREVIEW_MODEL", ""),
 		PreviewAuth:    EnvOrDefault("DICTION_PREVIEW_AUTH", ""),
-		Debug:          EnvBoolOrDefault("DICTION_DEBUG_STREAM", false),
 	}
+	atLeast := func(v *int, min int) {
+		if *v < min {
+			*v = min
+		}
+	}
+	atLeast(&c.PauseMs, 200)
+	atLeast(&c.ShortPauseMs, 100)
+	atLeast(&c.MinSegMs, 1000)
+	atLeast(&c.MaxSegMs, c.MinSegMs)
+	atLeast(&c.PartialEveryMs, 250)
+	return c
 }
 
 const (
@@ -77,26 +94,34 @@ const (
 	liveThresholdMin  = -60.0 // below this is silence whatever the floor
 	liveThresholdMax  = -30.0 // above this is speech whatever the floor
 	liveMinVoicedMs   = 300   // a segment needs this much speech to be cut
-	liveTailVoicedMs  = 120   // the tail is skipped below this much speech
+	// The tail is skipped only if it is (near) silence: fewer than 60 ms of frames even
+	// 6 dB above the floor, with no upper clamp, so a quiet last word is still sent.
+	liveActiveAboveDB = 6.0
+	liveTailActiveMs  = 60
+	// Audio held without any cut. Past this the engine gives up (whole clip instead), so
+	// a long stretch without pauses cannot grow memory without bound.
+	liveMaxOpenMs = 90000
 )
 
 // pauseDetector finds cut points in 16 kHz s16le PCM. Positions are in samples.
 type pauseDetector struct {
 	cfg LiveConfig
 
-	rem       []byte
-	pos       int64 // samples processed
-	floor     [liveFloorWindow]float64
-	floorN    int
-	segStart  int64
-	voiced    int // speech frames since segStart
-	silence   int // consecutive silent frames
-	silStart  int64
+	rem      []byte
+	pos      int64 // samples processed
+	floor    [liveFloorWindow]float64
+	floorN   int
+	segStart int64
+	voiced   int // speech frames since segStart
+	active   int // frames since segStart at least liveActiveAboveDB over the floor
+	silence  int // consecutive silent frames
+	silStart int64
 }
 
 type liveCut struct {
 	at     int64 // sample position
 	voiced int   // speech frames in the segment it closes
+	active int   // frames above the weaker "anything there?" threshold
 }
 
 func frameDBFS(frame []byte) float64 {
@@ -113,19 +138,16 @@ func frameDBFS(frame []byte) float64 {
 	return 20 * math.Log10(rms/32768)
 }
 
-func (d *pauseDetector) threshold() float64 {
-	n := d.floorN
-	if n > liveFloorWindow {
-		n = liveFloorWindow
+// thresholds returns the speech threshold (cuts) and the weaker activity threshold (tail).
+func (d *pauseDetector) thresholds() (speech, active float64) {
+	n := min(d.floorN, liveFloorWindow)
+	lo := d.floor[0]
+	for i := 1; i < n; i++ {
+		lo = math.Min(lo, d.floor[i])
 	}
-	lo := 0.0
-	for i := 0; i < n; i++ {
-		if i == 0 || d.floor[i] < lo {
-			lo = d.floor[i]
-		}
-	}
-	th := lo + liveSpeechAboveDB
-	return math.Max(liveThresholdMin, math.Min(liveThresholdMax, th))
+	speech = math.Max(liveThresholdMin, math.Min(liveThresholdMax, lo+liveSpeechAboveDB))
+	active = math.Max(liveThresholdMin, lo+liveActiveAboveDB)
+	return speech, active
 }
 
 // push consumes PCM and returns any cuts it completes.
@@ -143,7 +165,11 @@ func (d *pauseDetector) push(p []byte) []liveCut {
 		d.floorN++
 		frameStart := d.pos
 		d.pos += liveFrameSamples
-		if db > d.threshold() {
+		speech, active := d.thresholds()
+		if db > active {
+			d.active++
+		}
+		if db > speech {
 			d.voiced++
 			d.silence = 0
 			continue
@@ -160,9 +186,9 @@ func (d *pauseDetector) push(p []byte) []liveCut {
 		if d.voiced*liveFrameMs >= liveMinVoicedMs && segMs >= d.cfg.MinSegMs && d.silence*liveFrameMs >= need {
 			// Cut in the middle of the pause seen so far: both sides keep some silence.
 			at := d.silStart + int64(d.silence*liveFrameSamples/2)
-			cuts = append(cuts, liveCut{at: at, voiced: d.voiced})
+			cuts = append(cuts, liveCut{at: at, voiced: d.voiced, active: d.active})
 			d.segStart = at
-			d.voiced = 0
+			d.voiced, d.active = 0, 0
 		}
 	}
 	if len(p) > 0 {
@@ -194,7 +220,8 @@ type liveEngine struct {
 	committed int64    // sample position up to which texts cover the audio
 	failed    error
 	finishing bool
-	busy      bool // a segment job is running
+	busy      bool // a segment job is running (tests wait on it)
+	english   bool // the full-stop repair in joinSegments is English-only
 
 	partialCancel  context.CancelFunc
 	partialFrom    int64 // committed position the last partial was computed from
@@ -202,8 +229,8 @@ type liveEngine struct {
 	interims       chan string
 	interimsClosed bool
 
-	segments   int
-	segmentMs  int64 // total backend time spent on segments while recording
+	segments  int
+	segmentMs int64 // total backend time spent on segments while recording
 }
 
 func newLiveEngine(parent context.Context, cfg LiveConfig, final, partial liveTranscribeFunc) *liveEngine {
@@ -223,10 +250,11 @@ func newLiveEngine(parent context.Context, cfg LiveConfig, final, partial liveTr
 	return e
 }
 
-// Write feeds PCM. Safe to call from any one goroutine at a time; never blocks on the backend.
+// Write feeds PCM. Safe to call from any one goroutine at a time; never blocks on the
+// backend. After a failure or Finish it discards the audio (the handler keeps its own copy).
 func (e *liveEngine) Write(p []byte) (int, error) {
 	e.mu.Lock()
-	if !e.finishing {
+	if !e.finishing && e.failed == nil {
 		e.pcm = append(e.pcm, p...)
 		for _, c := range e.det.push(p) {
 			if e.cfg.Debug {
@@ -234,10 +262,21 @@ func (e *liveEngine) Write(p []byte) (int, error) {
 			}
 			e.pending = append(e.pending, c)
 		}
+		if len(e.pending) == 0 && (e.audioEnd()-e.committed)*1000/liveSampleRate > liveMaxOpenMs {
+			e.fail(errLiveNoPause)
+		}
 	}
 	e.mu.Unlock()
 	e.poke()
 	return len(p), nil
+}
+
+var errLiveNoPause = errors.New("live: no pause to cut at")
+
+// fail marks the engine failed and frees its audio. Caller holds mu.
+func (e *liveEngine) fail(err error) {
+	e.failed = err
+	e.pcm, e.pending = nil, nil
 }
 
 func (e *liveEngine) poke() {
@@ -250,7 +289,7 @@ func (e *liveEngine) poke() {
 // audioEnd is the sample position of the end of the received audio. Caller holds mu.
 func (e *liveEngine) audioEnd() int64 { return e.base + int64(len(e.pcm)/2) }
 
-// slice returns a WAV of [from, to). Caller holds mu.
+// wav returns a WAV of [from, to). Caller holds mu.
 func (e *liveEngine) wav(from, to int64) []byte {
 	a := (from - e.base) * 2
 	b := (to - e.base) * 2
@@ -272,7 +311,7 @@ func (e *liveEngine) commit(to int64, text string) {
 	e.committed = to
 }
 
-func (e *liveEngine) committedText() string { return joinSegments(e.texts) }
+func (e *liveEngine) committedText() string { return joinSegments(e.texts, e.english) }
 
 // Words that (almost) never end a sentence, and words that (almost) never start one.
 // A backend punctuates every segment as if it were complete, so a cut at a mid-sentence
@@ -286,6 +325,13 @@ var (
 		"your", "their", "shows", "showed", "including", "per", "plus", "versus", "vs")
 	segContinuingStart = setOf("and", "or", "nor", "to", "of", "than", "whom", "whose", "plus",
 		"versus", "including")
+	// After a removed full stop, only these words are lowercased. Anything else keeps its
+	// capital, because it may be a name ("referred to. John" → "referred to John").
+	segLowerable = setOf("a", "an", "the", "and", "or", "nor", "but", "so", "to", "of", "for",
+		"with", "without", "from", "in", "on", "at", "by", "into", "after", "before", "when",
+		"while", "then", "if", "because", "than", "as", "that", "this", "these", "those", "it",
+		"its", "we", "he", "she", "they", "there", "his", "her", "our", "their", "my", "your",
+		"which", "who", "whom", "whose", "what", "plus", "versus", "including", "also")
 )
 
 func setOf(words ...string) map[string]bool {
@@ -312,29 +358,12 @@ func lastWord(s string) string {
 	return strings.TrimRight(f[len(f)-1], ".,;:")
 }
 
-// keepCapital reports whether a segment's first word must keep its capital: "I", acronyms
-// (two or more capitals, like MRI or EEG) and words with digits.
-func keepCapital(w string) bool {
-	if w == "I" || strings.HasPrefix(w, "I'") {
-		return true
-	}
-	upper := 0
-	for _, r := range w {
-		if r >= '0' && r <= '9' {
-			return true
-		}
-		if r >= 'A' && r <= 'Z' {
-			upper++
-		}
-	}
-	return upper >= 2
-}
-
-// joinSegments joins segment texts, removing the full stop a cut put in mid-sentence:
-// when a segment ends in a word that rarely ends a sentence, or the next starts with a
-// word that rarely starts one, the stop goes and the next word is lowercased (unless it
-// is "I", an acronym or has digits). Question and exclamation marks are kept.
-func joinSegments(texts []string) string {
+// joinSegments joins segment texts with spaces. For English (the word lists are
+// English) it also removes the full stop a cut put in mid-sentence: when a segment ends
+// in a word that cannot end a sentence, or the next starts with one that cannot start
+// one. The next word is then lowercased only if it is a common function word, so names
+// and acronyms keep their capitals. Question and exclamation marks are always kept.
+func joinSegments(texts []string, english bool) string {
 	var b strings.Builder
 	for _, t := range texts {
 		t = strings.TrimSpace(t)
@@ -346,13 +375,14 @@ func joinSegments(texts []string) string {
 			continue
 		}
 		prev := b.String()
-		next := firstWord(t)
-		if strings.HasSuffix(prev, ".") && !strings.HasSuffix(prev, "..") &&
-			(segDanglingEnd[strings.ToLower(lastWord(prev))] || segContinuingStart[strings.ToLower(next)]) {
+		next := strings.ToLower(firstWord(t))
+		if english && strings.HasSuffix(prev, ".") && !strings.HasSuffix(prev, "..") &&
+			(segDanglingEnd[strings.ToLower(lastWord(prev))] || segContinuingStart[next]) {
 			b.Reset()
 			b.WriteString(strings.TrimSuffix(prev, "."))
-			if next != "" && !keepCapital(next) {
-				t = strings.ToLower(t[:1]) + t[1:]
+			if segLowerable[next] {
+				r, size := utf8.DecodeRuneInString(t)
+				t = string(unicode.ToLower(r)) + t[size:]
 			}
 		}
 		b.WriteString(" ")
@@ -423,7 +453,7 @@ func (e *liveEngine) step() bool {
 		e.mu.Lock()
 		e.busy = false
 		if err != nil {
-			e.failed = err
+			e.fail(err)
 			e.mu.Unlock()
 			if e.cfg.Debug {
 				// The hint, never the error: a backend error body can hold the user's words.
@@ -471,7 +501,7 @@ func (e *liveEngine) step() bool {
 	e.partialCancel = nil
 	// A segment may have committed meanwhile; this partial is then stale.
 	if err == nil && e.committed == from && !hasDegenerateRepetition(text) {
-		joined := joinSegments(append(append([]string(nil), e.texts...), text))
+		joined := joinSegments(append(append([]string(nil), e.texts...), text), e.english)
 		e.emit(joined)
 	}
 	e.mu.Unlock()
@@ -502,6 +532,9 @@ type liveFinish struct {
 
 // Finish ends recording: it waits for an in-flight segment, transcribes the tail and
 // returns the joined text. ok=false means the caller must use the whole-clip request.
+//
+// The whole of Finish has a budget (5 s plus half the audio still open), so a stalled
+// backend costs at most that before the whole-clip request is tried.
 func (e *liveEngine) Finish(ctx context.Context) (string, bool, liveFinish) {
 	var st liveFinish
 	e.mu.Lock()
@@ -509,7 +542,10 @@ func (e *liveEngine) Finish(ctx context.Context) (string, bool, liveFinish) {
 	if e.partialCancel != nil {
 		e.partialCancel()
 	}
+	budget := 5*time.Second + time.Duration(e.audioEnd()-e.committed)*time.Second/liveSampleRate/2
 	e.mu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
 	e.poke()
 	waitStart := time.Now()
 	select {
@@ -526,14 +562,14 @@ func (e *liveEngine) Finish(ctx context.Context) (string, bool, liveFinish) {
 		return "", false, st
 	}
 	// Pending cuts that never started are simply part of the tail.
-	tailVoiced := e.det.voiced
+	tailActive := e.det.active
 	for _, c := range e.pending {
-		tailVoiced += c.voiced
+		tailActive += c.active
 	}
 	end := e.audioEnd()
 	st.tailSec = float64(end-e.committed) / liveSampleRate
 	var wav []byte
-	if tailVoiced*liveFrameMs >= liveTailVoicedMs && end > e.committed {
+	if tailActive*liveFrameMs >= liveTailActiveMs && end > e.committed {
 		wav = e.wav(e.committed, end)
 	}
 	texts := append([]string(nil), e.texts...)
@@ -554,7 +590,7 @@ func (e *liveEngine) Finish(ctx context.Context) (string, bool, liveFinish) {
 		// Nothing heard, or the detector misjudged the audio: let the whole clip decide.
 		return "", false, st
 	}
-	return joinSegments(texts), true, st
+	return joinSegments(texts, e.english), true, st
 }
 
 // Close stops the worker and any request in flight. Idempotent.
@@ -571,14 +607,14 @@ func (e *liveEngine) Close() {
 // only; the handler owns the engine's lifetime (the segmented final may still need it).
 type livePreview struct{ e *liveEngine }
 
-func (p livePreview) Send([]byte)              {}
+func (p livePreview) Send([]byte)             {}
 func (p livePreview) Interims() <-chan string { return p.e.interims }
 func (p livePreview) Stop()                   { p.e.stopInterims() }
 
 // startLive opens a session's engine against the backend routing chose, with the same
 // language, prompt and custom words the whole-clip request would send — so segment
 // text goes through exactly the same backend-side processing as today's final.
-func (g *Gateway) startLive(ctx context.Context, target *url.URL, backend *Backend, upstreamLanguage, contextJSON string, preview bool) *liveEngine {
+func (g *Gateway) startLive(ctx context.Context, target *url.URL, backend *Backend, language, upstreamLanguage, contextJSON string, preview bool) *liveEngine {
 	prompt := buildWhisperPrompt(contextJSON)
 	customWords := buildCustomWordsField(contextJSON)
 	final := func(ctx context.Context, wav []byte) (string, error) {
@@ -598,7 +634,9 @@ func (g *Gateway) startLive(ctx context.Context, target *url.URL, backend *Backe
 			}
 		}
 	}
-	return newLiveEngine(ctx, g.live, final, partial)
+	e := newLiveEngine(ctx, g.live, final, partial)
+	e.english = strings.HasPrefix(strings.ToLower(language), "en")
+	return e
 }
 
 // close is the nil-safe Close for the handler's defer.
@@ -606,4 +644,47 @@ func (e *liveEngine) close() {
 	if e != nil {
 		e.Close()
 	}
+}
+
+// startLiveDecoder runs ffmpeg for a session whose original Opus is kept for the backend
+// (keepOriginal): its PCM goes only to the live engine, *decoded counts the bytes, and the
+// output is always drained so ffmpeg can never block the read loop.
+func startLiveDecoder(ctx context.Context, inputFmt string, stderr io.Writer, live *liveEngine, decoded *int64) (*exec.Cmd, io.WriteCloser, chan struct{}, error) {
+	cmd := exec.CommandContext(ctx, lookupFfmpeg(), "-loglevel", "error",
+		"-f", inputFmt, "-i", "pipe:0", "-f", "s16le", "-ar", "16000", "-ac", "1", "pipe:1")
+	cmd.Stderr = stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, nil, nil, err
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		io.Copy(countingWriter{live, decoded}, stdout) //nolint:errcheck — live.Write never fails
+	}()
+	return cmd, stdin, done, nil
+}
+
+type countingWriter struct {
+	w io.Writer
+	n *int64
+}
+
+func (c countingWriter) Write(p []byte) (int, error) {
+	atomic.AddInt64(c.n, int64(len(p)))
+	return c.w.Write(p)
+}
+
+func absInt64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

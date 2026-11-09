@@ -164,6 +164,7 @@ func NewGateway(cfg Config) *Gateway {
 		debugStream:           EnvBoolOrDefault("DICTION_DEBUG_STREAM", false),
 		live:                  LiveConfigFromEnv(),
 	}
+	g.live.Debug = g.debugStream
 	g.startHealthChecker()
 	return g
 }

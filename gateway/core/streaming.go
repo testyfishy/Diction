@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -425,8 +426,8 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// BEFORE Accept erases the header.
 		clientOfferedOpus := strings.Contains(r.Header.Get("Sec-WebSocket-Protocol"), opusSubprotocol)
 		if g.debugStream {
-			log.Printf("ws debug: open query=%s offered_subprotocols=%q", sanitizeStreamQuery(r.URL.Query()),
-				r.Header.Get("Sec-WebSocket-Protocol"))
+			// Only whether Opus was offered: other subprotocol tokens can carry credentials.
+			log.Printf("ws debug: open query=%s offered_opus=%v", sanitizeStreamQuery(r.URL.Query()), clientOfferedOpus)
 		}
 
 		acceptOpts := &websocket.AcceptOptions{
@@ -532,11 +533,25 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// Passthrough: when the backend can accept Ogg/WebM directly, skip the
 		// ffmpeg decode and forward the accumulated Opus bytes as-is.
 		//
-		// Live features (live.go) need PCM while the user talks, so they turn the
-		// passthrough off: ffmpeg then decodes the Opus as it arrives.
+		// Live features (live.go) need PCM while the user talks, so ffmpeg also
+		// decodes the Opus as it arrives. With a passthrough backend the original
+		// Ogg/WebM is still kept (keepOriginal): the whole-clip request then sends
+		// exactly what it sends today, and any decode trouble only turns live off.
 		previewParam := r.URL.Query().Get("preview") == "cloud"
 		builtinPreview := previewParam && PreviewRelay == nil && g.live.Preview
 		liveOn := (g.live.Segmented || builtinPreview) && (!isOpus || ffmpegAvail)
+		keepOriginal := isOpus && !backend.NeedsWAV && liveOn
+		if keepOriginal {
+			// A best-effort decode never waits for a slot or rejects the session.
+			select {
+			case getOpusSem() <- struct{}{}:
+				defer func() { <-getOpusSem() }()
+			default:
+				log.Printf("live: Opus decode slots busy; live off for this session")
+				liveOn, keepOriginal = false, false
+			}
+		}
+		builtinPreview = builtinPreview && liveOn
 		usePassthrough := isOpus && !backend.NeedsWAV && !liveOn
 		frameStats := streamFrameStats{opened: socketOpenedAt}
 		if g.debugStream {
@@ -544,10 +559,10 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 				conn.Subprotocol(), codecTag, negotiationOutcome, usePassthrough, liveOn, builtinPreview)
 		}
 
-		// --- Semaphore (ffmpeg decode path only) ---
+		// --- Semaphore (NeedsWAV decode path only) ---
 		// Every cloud backend is NeedsWAV, so cloud traffic spawns one ffmpeg
 		// process per concurrent dictation. The semaphore bounds that.
-		if isOpus && !usePassthrough {
+		if isOpus && backend.NeedsWAV {
 			sem := getOpusSem()
 			waitTimer := time.NewTimer(5 * time.Second)
 			defer waitTimer.Stop()
@@ -592,12 +607,18 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			ffmpegStderr   = limitedStderrWriter{cap: 4096}
 			stdoutDone     chan struct{}
 			ffmpegWriteErr error
+
+			// keepOriginal only: the decode for the live engine failed or fell short,
+			// so the segmented final must not be trusted (the original is sent instead).
+			liveBroken       bool
+			liveDecodedBytes int64 // PCM bytes the live decoder produced (atomic)
 		)
 
 		// ffmpegCleanup closes stdin and waits for the process to exit + stdout to drain.
 		// It is idempotent — safe to call explicitly after the loop AND again from the
 		// defer so that early returns in the post-loop section also reap the process.
 		var ffmpegCleaned bool
+		var ffmpegWaitErr error // read only by the keepOriginal checks
 		ffmpegCleanup := func() {
 			if ffmpegCleaned || ffmpegStdin == nil {
 				return
@@ -607,7 +628,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			if stdoutDone != nil {
 				<-stdoutDone
 			}
-			ffmpegCmd.Wait() //nolint:errcheck — we capture stderr separately
+			ffmpegWaitErr = ffmpegCmd.Wait() // stderr is captured separately
 		}
 		defer ffmpegCleanup()
 
@@ -619,7 +640,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// Cloud preview (preview.go): PCM sessions only, opened on the first PCM frame.
 		// The deferred stop covers every early return; the explicit stop after the loop
 		// is what orders the last interim before the at-stop frames.
-		wantPreview := r.URL.Query().Get("preview") == "cloud" && PreviewRelay != nil
+		wantPreview := previewParam && PreviewRelay != nil
 		if wantPreview && isOpus {
 			reportPreviewRelay(ctx, "failed")
 			wantPreview = false
@@ -735,7 +756,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 
 				if liveOn && live == nil {
 					liveLanguage = language
-					live = g.startLive(ctx, target, backend, upstreamLanguageFor(language), contextJSON, builtinPreview)
+					live = g.startLive(ctx, target, backend, language, upstreamLanguageFor(language), contextJSON, builtinPreview)
 					if builtinPreview {
 						preview = startPreviewPumpWith(ctx, conn, livePreview{live})
 					}
@@ -770,7 +791,16 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					// Start ffmpeg now that we know the container format. This deferred
 					// start means `-f ogg` or `-f webm` is always explicit, preventing
 					// ffmpeg from probe-blocking on a live pipe.
-					if !usePassthrough {
+					if keepOriginal {
+						// Best effort: a decoder that cannot start only turns live off.
+						cmd, stdin, done, derr := startLiveDecoder(ctx, strings.TrimPrefix(containerFile, "audio."), &ffmpegStderr, live, &liveDecodedBytes)
+						if derr != nil {
+							log.Printf("live: decoder did not start; live off for this session")
+							liveBroken = true
+						} else {
+							ffmpegCmd, ffmpegStdin, stdoutDone = cmd, stdin, done
+						}
+					} else if !usePassthrough {
 						inputFmt := strings.TrimPrefix(containerFile, "audio.")
 						cmd := exec.CommandContext(ctx, lookupFfmpeg(),
 							"-loglevel", "error",
@@ -849,6 +879,14 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 
 				if usePassthrough {
 					opusInputBuf.Write(data)
+				} else if keepOriginal {
+					opusInputBuf.Write(data)
+					if ffmpegStdin != nil && !liveBroken {
+						if _, werr := ffmpegStdin.Write(data); werr != nil {
+							log.Printf("live: decoder stopped mid-stream; live off for this session")
+							liveBroken = true
+						}
+					}
 				} else if isOpus {
 					if _, werr := ffmpegStdin.Write(data); werr != nil {
 						// ffmpeg died mid-stream. Break the read loop and handle below.
@@ -923,6 +961,20 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// early return below, so no explicit call is needed. The check below is
 		// after cleanup has drained stdout and reaped the process.
 		ffmpegCleanup()
+
+		// keepOriginal: trust the live engine only if ffmpeg exited cleanly and
+		// decoded (about) as much audio as the Ogg holds.
+		if keepOriginal && !liveBroken {
+			decodedMs := atomic.LoadInt64(&liveDecodedBytes) * 1000 / pcmBytesPerSecond
+			oggMs := int64(-1)
+			if containerFile == "audio.ogg" {
+				oggMs = oggDurationMs(opusInputBuf.Bytes())
+			}
+			if ffmpegWaitErr != nil || (oggMs >= 0 && absInt64(decodedMs-oggMs) > 500) {
+				log.Printf("live: decode incomplete (decoded %dms of %dms); using the whole clip", decodedMs, oggMs)
+				liveBroken = true
+			}
+		}
 
 		// After draining, handle any write error that broke the read loop.
 		if ffmpegWriteErr != nil {
@@ -1001,7 +1053,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// bytes we hand it, using the filename to set Content-Disposition.
 		var payload audioPayload
 		var audioDurationMs int64
-		if usePassthrough {
+		if usePassthrough || keepOriginal { // keepOriginal: send the original, exactly as today
 			payload = audioPayload{data: opusInputBuf.Bytes(), filename: containerFile}
 			if containerFile == "audio.ogg" {
 				audioDurationMs = oggDurationMs(opusInputBuf.Bytes())
@@ -1047,7 +1099,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// Segmented final: most of the audio was transcribed while the user talked.
 		// Anything short of a clean result falls through to the whole-clip request.
 		segmented := false
-		if live != nil && g.live.Segmented {
+		if live != nil && g.live.Segmented && !liveBroken {
 			if language != liveLanguage {
 				log.Printf("live: language changed at done; using the whole clip")
 			} else {
@@ -1075,7 +1127,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			retry := streamRetryInput{
 				model: model, language: language, detectActive: detectActive,
 				adResult: adResult, adCtx: adCtx, payload: payload,
-				usePassthrough: usePassthrough, upstreamLanguage: upstreamLanguage,
+				usePassthrough: usePassthrough || keepOriginal, upstreamLanguage: upstreamLanguage,
 				whisperPrompt: whisperPrompt, customWordsJSON: customWordsJSON,
 			}
 			// stt_ms includes the retry, same as the HTTP path's `whisperMs`.

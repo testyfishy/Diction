@@ -481,11 +481,12 @@ func TestJoinSegments_RepairsMidSentenceCuts(t *testing.T) {
 	// What GUFO returned, segment by segment, for a dictation with mid-sentence pauses.
 	got := joinSegments([]string{
 		"The plan for this patient is.", "After the repeat MRI.", "To start levetiracetam at a low dose and.",
-		"Titrate up over two weeks.", "If the EEG shows.", "Ongoing discharges.", "We will add lacosamide.",
+		"We titrate up over two weeks.", "If the EEG shows.", "Ongoing discharges.", "We will add lacosamide.",
 		"I also want a lipid panel.", "Copy Dr.", "Smith?", "Done.",
-	})
+	}, true)
+	// Only function words are lowercased; "Ongoing" keeps its capital (it could be a name).
 	want := "The plan for this patient is after the repeat MRI to start levetiracetam at a low dose and " +
-		"titrate up over two weeks. If the EEG shows ongoing discharges. We will add lacosamide. " +
+		"we titrate up over two weeks. If the EEG shows Ongoing discharges. We will add lacosamide. " +
 		"I also want a lipid panel. Copy Dr. Smith? Done."
 	if got != want {
 		t.Fatalf("got  %q\nwant %q", got, want)
@@ -493,14 +494,109 @@ func TestJoinSegments_RepairsMidSentenceCuts(t *testing.T) {
 }
 
 func TestJoinSegments_KeepsCapitalsThatMatter(t *testing.T) {
-	if got := joinSegments([]string{"Order an.", "MRI of the brain.", "And.", "I will call."}); got != "Order an MRI of the brain and I will call." {
+	if got := joinSegments([]string{"Order an.", "MRI of the brain.", "And.", "I will call."}, true); got != "Order an MRI of the brain and I will call." {
+		t.Fatalf("got %q", got)
+	}
+	// Names after a removed stop keep their capital.
+	if got := joinSegments([]string{"He was referred to.", "John at the clinic.", "Seen with.", "Émile."}, true); got != "He was referred to John at the clinic. Seen with Émile." {
 		t.Fatalf("got %q", got)
 	}
 	// Real sentence ends stay: "not", "her", "that" can end a sentence; "When" can start one.
-	if got := joinSegments([]string{"Ubrogepant did not.", "Her MRI was normal.", "I told her.", "When she called, I said that.", "Then we left."}); got != "Ubrogepant did not. Her MRI was normal. I told her. When she called, I said that. Then we left." {
+	if got := joinSegments([]string{"Ubrogepant did not.", "Her MRI was normal.", "I told her.", "When she called, I said that.", "Then we left."}, true); got != "Ubrogepant did not. Her MRI was normal. I told her. When she called, I said that. Then we left." {
 		t.Fatalf("got %q", got)
 	}
-	if got := joinSegments([]string{"", " Hello. ", ""}); got != "Hello." {
+	if got := joinSegments([]string{"", " Hello. ", ""}, true); got != "Hello." {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestJoinSegments_OnlyRepairsEnglish(t *testing.T) {
+	// Czech "a" (and) / "to" (it): "Je to." is a whole sentence. No repair outside English.
+	in := []string{"Je to.", "Über alles a.", "Říkal to."}
+	if got := joinSegments(in, false); got != "Je to. Über alles a. Říkal to." {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestLiveEngine_ShortLastWordIsSent(t *testing.T) {
+	asr := &fakeASR{}
+	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, nil)
+	defer e.Close()
+	// A 100 ms word after the last pause ("No.") must still be transcribed.
+	feedLive(t, e, pcmPattern(4000, 1000, 100, 300))
+	text, ok, _ := e.Finish(context.Background())
+	if !ok || text != "part1. part2." {
+		t.Fatalf("got %q ok=%v", text, ok)
+	}
+}
+
+func TestLiveEngine_GivesUpWithoutPauses(t *testing.T) {
+	asr := &fakeASR{}
+	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, nil)
+	defer e.Close()
+	feedLive(t, e, pcmPattern(liveMaxOpenMs+2000))
+	if _, ok, _ := e.Finish(context.Background()); ok {
+		t.Fatal("Finish ok after 92 s without a pause; want the whole clip")
+	}
+	e.mu.Lock()
+	held := len(e.pcm)
+	e.mu.Unlock()
+	if held != 0 {
+		t.Fatalf("engine still holds %d bytes after giving up", held)
+	}
+}
+
+func TestLiveEngine_FinishHasABudget(t *testing.T) {
+	asr := &fakeASR{delay: time.Hour}
+	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, nil)
+	defer e.Close()
+	feedChunksNoWait(e, pcmPattern(4000, 1000, 2000))
+	start := time.Now()
+	if _, ok, _ := e.Finish(context.Background()); ok {
+		t.Fatal("ok with a stalled backend")
+	}
+	if d := time.Since(start); d > 12*time.Second {
+		t.Fatalf("Finish took %v with a stalled backend", d)
+	}
+}
+
+func feedChunksNoWait(e *liveEngine, pcm []byte) {
+	for len(pcm) > 0 {
+		n := min(3200, len(pcm))
+		e.Write(pcm[:n]) //nolint:errcheck
+		pcm = pcm[n:]
+	}
+}
+
+func TestLiveConfigFromEnv_ClampsNonsense(t *testing.T) {
+	t.Setenv("DICTION_PREVIEW_INTERVAL_MS", "0")
+	t.Setenv("DICTION_SEGMENT_PAUSE_MS", "-5")
+	t.Setenv("DICTION_SEGMENT_MIN_MS", "9000")
+	t.Setenv("DICTION_SEGMENT_MAX_MS", "100")
+	c := LiveConfigFromEnv()
+	if c.PartialEveryMs < 250 || c.PauseMs < 200 || c.MaxSegMs < c.MinSegMs {
+		t.Fatalf("not clamped: %+v", c)
+	}
+}
+
+func TestStreaming_SegmentedFinal_OpusFallbackSendsOriginal(t *testing.T) {
+	p := ensureFfmpeg(t)
+	cmd := exec.Command(p, "-loglevel", "error", "-f", "lavfi",
+		"-i", "aevalsrc=0.1*sin(2*PI*220*t)*lt(mod(t\\,4)\\,3):s=16000:d=10",
+		"-c:a", "libopus", "-b:a", "16k", "-page_duration", "200000", "-f", "ogg", "pipe:1")
+	var ogg bytes.Buffer
+	cmd.Stdout = &ogg
+	if err := cmd.Run(); err != nil {
+		t.Skipf("libopus encode failed: %v", err)
+	}
+	// Every segment fails, so the whole clip goes: it must be the original Ogg, as today.
+	backend, _, lastName := segmentBackend(t, func(n int) bool { return n == 1 })
+	srv := liveGateway(t, backend.URL, testLiveConfig())
+	text, err := streamOpusBinary(t, srv, ogg.Bytes(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name, _ := lastName.Load().(string); name != "audio.ogg" || text == "" {
+		t.Fatalf("fallback sent %q (text %q), want the original audio.ogg", name, text)
 	}
 }
