@@ -58,8 +58,8 @@ CLIPS = {
 }
 
 
-def tts(url, text):
-    body = json.dumps({"input": text, "voice": VOICE, "response_format": "pcm"}).encode()
+def tts(url, text, voice=VOICE):
+    body = json.dumps({"input": text, "voice": voice, "response_format": "pcm"}).encode()
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=300) as r:
         return r.read()
@@ -70,16 +70,22 @@ def ffmpeg(*args):
 
 
 def main():
-    out = sys.argv[1]
+    """make_clips.py OUT_DIR TTS_URL [standard]: the 4-clip set, or the 16-clip standard set
+    (standard_set.py, two voices; also writes <name>.terms, the target terms to score)."""
     if len(sys.argv) < 3:
-        sys.exit("usage: make_clips.py OUT_DIR TTS_URL")
-    url = sys.argv[2]
+        sys.exit("usage: make_clips.py OUT_DIR TTS_URL [standard]")
+    out, url = sys.argv[1], sys.argv[2]
+    clips = {name: (VOICE, [], parts) for name, parts in CLIPS.items()}
+    if len(sys.argv) > 3 and sys.argv[3] == "standard":
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from standard_set import STANDARD
+        clips = STANDARD
     os.makedirs(out, exist_ok=True)
-    for name, parts in CLIPS.items():
+    for name, (voice, terms, parts) in clips.items():
         rng = random.Random(zlib.crc32(name.encode()))
         samples = [0.0] * int(LEAD_S * RATE)
         for text, pause in parts:
-            samples += [s for (s,) in struct.iter_unpack("<h", tts(url, text))]
+            samples += [s for (s,) in struct.iter_unpack("<h", tts(url, text, voice))]
             samples += [0.0] * int(pause * RATE)
         samples += [0.0] * int(TAIL_S * RATE)
         amp = 32768 * 10 ** (NOISE_DBFS / 20)
@@ -95,6 +101,9 @@ def main():
         os.remove(raw)
         with open(base + ".txt", "w") as f:
             f.write(" ".join(t for t, _ in parts) + "\n")
+        if terms:
+            with open(base + ".terms", "w") as f:
+                f.write("\n".join(terms) + "\n")
         print(f"{name}: {len(pcm) / RATE:.1f} s")
 
 
