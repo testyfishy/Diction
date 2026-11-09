@@ -1,7 +1,7 @@
 """Make the benchmark dictations: text-to-speech sentence by sentence, joined with pauses we
 choose, plus a quiet noise floor, then encoded the way the Diction app sends audio.
 
-    python3 make_clips.py OUT_DIR TTS_URL
+    python3 make_clips.py OUT_DIR TTS_URL [standard|training|long]
 
 TTS_URL is an OpenAI-compatible /v1/audio/speech endpoint that returns raw 24 kHz 16-bit
 mono PCM for response_format=pcm (we used Qwen3-TTS-12Hz-1.7B-CustomVoice, voice "aiden").
@@ -70,20 +70,25 @@ def ffmpeg(*args):
 
 
 def main():
-    """make_clips.py OUT_DIR TTS_URL [standard|training]: the 4-clip set, the 16-clip standard set
-    (standard_set.py, two voices; also writes <name>.terms, the target terms to score)."""
+    """make_clips.py OUT_DIR TTS_URL [standard|training|long]: the 4-clip set, the 16-clip standard set
+    (standard_set.py, two voices; also writes <name>.terms, the target terms to score), the training
+    set, or the 2-minute long-form set (long_set.py)."""
     if len(sys.argv) < 3:
-        sys.exit("usage: make_clips.py OUT_DIR TTS_URL [standard|training]")
+        sys.exit("usage: make_clips.py OUT_DIR TTS_URL [standard|training|long]")
     out, url = sys.argv[1], sys.argv[2]
     clips = {name: (VOICE, [], parts) for name, parts in CLIPS.items()}
-    if len(sys.argv) > 3 and sys.argv[3] in ("standard", "training"):
+    if len(sys.argv) > 3 and sys.argv[3] in ("standard", "training", "long"):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         if sys.argv[3] == "standard":
             from standard_set import STANDARD as clips
-        else:
+        elif sys.argv[3] == "training":
             from training_set import TRAINING as clips
+        else:
+            from long_set import LONG as clips
     os.makedirs(out, exist_ok=True)
     for name, (voice, terms, parts) in clips.items():
+        if os.environ.get("KEEP_EXISTING") == "1" and os.path.exists(os.path.join(out, name + ".ogg")):
+            continue                                   # resume: keep clips already made
         rng = random.Random(zlib.crc32(name.encode()))
         samples = [0.0] * int(LEAD_S * RATE)
         for text, pause in parts:
@@ -106,7 +111,7 @@ def main():
         if terms:
             with open(base + ".terms", "w") as f:
                 f.write("\n".join(terms) + "\n")
-        print(f"{name}: {len(pcm) / RATE:.1f} s")
+        print(f"{name}: {len(pcm) / RATE:.1f} s", flush=True)
 
 
 if __name__ == "__main__":
