@@ -9,23 +9,9 @@ The work is on branch [`hermes/live-text`](https://github.com/testyfishy/Diction
 Full results, settings and how to reproduce every test:
 [HERMES-FORK.md](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md).
 
-**Short dictations so far** (16 test dictations of 17–28 s, mean of 5 passes each):
+**Short dictations so far:**
 
-```mermaid
-xychart-beta
-    title "Wrong words (%), lower is better"
-    x-axis ["Whole", "Whole + table", "Pieces", "Pieces + table", "Pieces + table + fix"]
-    y-axis 0 --> 11
-    bar [5.7, 5.4, 10.1, 8.6, 6.2]
-```
-
-```mermaid
-xychart-beta
-    title "Speech-model time after you stop (s), lower is better"
-    x-axis ["Whole", "Whole + table", "Pieces", "Pieces + table", "Pieces + table + fix"]
-    y-axis 0 --> 1.5
-    bar [1.27, 1.27, 0.36, 0.36, 1.29]
-```
+![Short dictations: wrong words and speech-model time after you stop, by mode](assets/hermes/short-results.svg)
 
 - **Whole**: upstream behaviour, the whole recording is transcribed after you stop.
   **Pieces**: transcribed at each pause while you talk, so only the last piece is left.
@@ -213,7 +199,7 @@ volumes:
 > Images are published under [Diction Labs](https://github.com/DictionLabs) on Docker Hub
 > (`dictionlabs/gateway`, canonical) and GHCR (`ghcr.io/dictionlabs/gateway`).
 
-Model weights are baked into the `parakeet` image, so there's nothing to download on first start. Unmodified copies of those weights are kept at [huggingface.co/DictionLabs](https://huggingface.co/DictionLabs) ([Parakeet v3 ONNX](https://huggingface.co/DictionLabs/parakeet-tdt-0.6b-v3-onnx), [diarization](https://huggingface.co/DictionLabs/Nemotron-3-Diarization-ONNX), [Silero VAD](https://huggingface.co/DictionLabs/silero-vad-onnx)). `DEFAULT_MODEL: parakeet-v3` covers 25 European languages - for the other 74, see [Whisper on CPU](#whisper-on-cpu-99-languages) or, with an NVIDIA GPU, [large-v3-turbo](#nvidia-gpu-whisper-large-v3-turbo).
+Model weights are baked into the `parakeet` image, so there's nothing to download on first start. `DEFAULT_MODEL: parakeet-v3` covers 25 European languages - for the other 74, see [Whisper on CPU](#whisper-on-cpu-99-languages) or, with an NVIDIA GPU, [large-v3-turbo](#nvidia-gpu-whisper-large-v3-turbo).
 
 > **On a VPS or any host reachable from the internet**, this stack is open: anyone who finds
 > port 8080 can transcribe on your server, and if you add [AI cleanup](#ai-cleanup-and-voice-editing-byo-llm)
