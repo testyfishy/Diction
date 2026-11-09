@@ -543,11 +543,10 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		keepOriginal := isOpus && !backend.NeedsWAV && liveOn
 		if keepOriginal {
 			// A best-effort decode never waits for a slot or rejects the session.
-			select {
-			case getOpusSem() <- struct{}{}:
-				defer func() { <-getOpusSem() }()
-			default:
-				log.Printf("live: Opus decode slots busy; live off for this session")
+			if release, ok := tryLiveDecodeSlot(); ok {
+				defer release()
+			} else {
+				log.Printf("live: decode slots busy; live off for this session")
 				liveOn, keepOriginal = false, false
 			}
 		}

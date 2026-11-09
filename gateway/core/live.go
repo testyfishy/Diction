@@ -452,6 +452,10 @@ func (e *liveEngine) step() bool {
 
 		e.mu.Lock()
 		e.busy = false
+		if e.failed != nil { // gave up meanwhile (Write's no-pause cap): the audio is gone
+			e.mu.Unlock()
+			return false
+		}
 		if err != nil {
 			e.fail(err)
 			e.mu.Unlock()
@@ -646,6 +650,24 @@ func (e *liveEngine) close() {
 	}
 }
 
+// liveDecodeSlots bounds the best-effort live decoders. It is separate from the Opus
+// semaphore so live sessions never delay or reject a decode the backend needs.
+var (
+	liveDecodeOnce  sync.Once
+	liveDecodeSlots chan struct{}
+)
+
+// tryLiveDecodeSlot takes a slot without waiting; release must be called if it returns true.
+func tryLiveDecodeSlot() (release func(), ok bool) {
+	liveDecodeOnce.Do(func() { liveDecodeSlots = make(chan struct{}, cap(getOpusSem())) })
+	select {
+	case liveDecodeSlots <- struct{}{}:
+		return func() { <-liveDecodeSlots }, true
+	default:
+		return nil, false
+	}
+}
+
 // startLiveDecoder runs ffmpeg for a session whose original Opus is kept for the backend
 // (keepOriginal): its PCM goes only to the live engine, *decoded counts the bytes, and the
 // output is always drained so ffmpeg can never block the read loop.
@@ -659,9 +681,11 @@ func startLiveDecoder(ctx context.Context, inputFmt string, stderr io.Writer, li
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		stdin.Close()
 		return nil, nil, nil, err
 	}
 	if err := cmd.Start(); err != nil {
+		stdin.Close()
 		return nil, nil, nil, err
 	}
 	done := make(chan struct{})

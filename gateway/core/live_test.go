@@ -600,3 +600,26 @@ func TestStreaming_SegmentedFinal_OpusFallbackSendsOriginal(t *testing.T) {
 		t.Fatalf("fallback sent %q (text %q), want the original audio.ogg", name, text)
 	}
 }
+
+func TestLiveEngine_SegmentReplyAfterGivingUpDoesNotPanic(t *testing.T) {
+	asr := &fakeASR{delay: 500 * time.Millisecond}
+	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, nil)
+	defer e.Close()
+	feedChunksNoWait(e, pcmPattern(4000, 1000)) // a cut: the segment request starts
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		e.mu.Lock()
+		busy := e.busy
+		e.mu.Unlock()
+		if busy || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// While it is in flight, talk past the no-pause cap: the engine gives up and frees
+	// its audio. The late reply must then be ignored, not committed into a nil buffer.
+	feedChunksNoWait(e, pcmPattern(liveMaxOpenMs+2000))
+	if _, ok, _ := e.Finish(context.Background()); ok {
+		t.Fatal("Finish ok after giving up")
+	}
+}
