@@ -9,17 +9,24 @@ The work is on branch [`hermes/live-text`](https://github.com/testyfishy/Diction
 Full results, settings and how to reproduce every test:
 [HERMES-FORK.md](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md).
 
-**Short dictations so far:**
+**Short dictations** (16 clips of 17–28 s):
 
 ![Short dictations: wrong words and speech-model time after you stop, by mode](assets/hermes/short-results.svg)
+
+**Two-minute dictations** (8 clips of 103–124 s):
+
+![Two-minute dictations: wrong words and speech-model time after you stop, by mode](assets/hermes/long-results.svg)
 
 - **Whole**: upstream behaviour, the whole recording is transcribed after you stop.
   **Pieces**: transcribed at each pause while you talk, so only the last piece is left.
   **Table**: a fuzzy lookup table of your terms fixes near-miss spellings (under 2 ms).
   **Fix**: low-confidence words in the pieces are re-checked with the audio around them.
-- Pieces are 3.5× faster but make almost twice the errors. Table + fix bring the errors back
-  down, but on short dictations they also cost the speed back.
-- **Next: two-minute dictations**, where the whole-recording wait reaches 16 s in real use.
+- **Short dictations:** pieces are 3.5× faster but make almost twice the errors. Table + fix
+  bring the errors back down, but also cost the speed back.
+- **Two-minute dictations:** pieces are 35× faster (0.4 s vs 14 s) *and* more accurate
+  (3.6% vs 4.5% wrong words; 3.0% with table + fix).
+- **GUFO cuts long transcripts short by default** (~256-token reply cap: a 2-minute whole
+  recording lost its last third). Send `max_tokens=512` with each request; pieces never hit it.
 
 *Everything below this section is the original Diction README.*
 
