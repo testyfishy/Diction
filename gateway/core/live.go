@@ -197,6 +197,19 @@ func (d *pauseDetector) push(p []byte) []liveCut {
 	return cuts
 }
 
+// liveMaxCharsPerSec bounds how much text a stretch of audio can hold. Fast dictation
+// is under 20 characters a second; more than this is the backend inventing text. Seen
+// with Qwen3-ASR: on a short piece it can append its whole vocabulary-hint prompt.
+const liveMaxCharsPerSec = 25
+
+// implausibleText reports a result that cannot be what was said in wav: degenerate
+// repetition, or more text than the audio could hold. The caller then treats the piece
+// as failed (so the whole clip is transcribed instead).
+func implausibleText(text string, wav []byte) bool {
+	secs := float64(len(wav)-44) / 2 / liveSampleRate
+	return hasDegenerateRepetition(text) || utf8.RuneCountInString(text) > int(liveMaxCharsPerSec*secs)+20
+}
+
 // liveTranscribeFunc transcribes one WAV (16 kHz mono s16). It must honour ctx.
 type liveTranscribeFunc func(ctx context.Context, wav []byte) (string, error)
 
@@ -445,7 +458,7 @@ func (e *liveEngine) step() bool {
 
 		start := time.Now()
 		text, err := e.final(e.ctx, wav)
-		if err == nil && hasDegenerateRepetition(text) {
+		if err == nil && implausibleText(text, wav) {
 			err = errSTTHallucination
 		}
 		ms := time.Since(start).Milliseconds()
@@ -504,7 +517,7 @@ func (e *liveEngine) step() bool {
 	e.mu.Lock()
 	e.partialCancel = nil
 	// A segment may have committed meanwhile; this partial is then stale.
-	if err == nil && e.committed == from && !hasDegenerateRepetition(text) {
+	if err == nil && e.committed == from && !implausibleText(text, wav) {
 		joined := joinSegments(append(append([]string(nil), e.texts...), text), e.english)
 		e.emit(joined)
 	}
@@ -583,7 +596,7 @@ func (e *liveEngine) Finish(ctx context.Context) (string, bool, liveFinish) {
 		start := time.Now()
 		text, err := e.final(ctx, wav)
 		st.tailMs = time.Since(start).Milliseconds()
-		if err != nil || hasDegenerateRepetition(text) {
+		if err != nil || implausibleText(text, wav) {
 			return "", false, st
 		}
 		if t := strings.TrimSpace(text); t != "" {

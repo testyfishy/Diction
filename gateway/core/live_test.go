@@ -623,3 +623,25 @@ func TestLiveEngine_SegmentReplyAfterGivingUpDoesNotPanic(t *testing.T) {
 		t.Fatal("Finish ok after giving up")
 	}
 }
+
+func TestLiveEngine_InventedTextMeansFallback(t *testing.T) {
+	// A backend that appends a long list (its prompt) to a 2 s tail.
+	echo := func(ctx context.Context, wav []byte) (string, error) {
+		if len(wav) < 4*2*liveSampleRate {
+			return "Copy Dr. Smith, " + strings.Repeat("Some Term, ", 30), nil
+		}
+		return "part.", nil
+	}
+	e := newLiveEngine(context.Background(), testLiveConfig(), echo, nil)
+	defer e.Close()
+	feedLive(t, e, pcmPattern(4000, 1000, 2000))
+	if _, ok, _ := e.Finish(context.Background()); ok {
+		t.Fatal("Finish ok with 330 characters from 2 s of audio; want the whole clip")
+	}
+	if !implausibleText(strings.Repeat("x", 60), make([]byte, 44+2*liveSampleRate)) {
+		t.Fatal("60 chars in 1 s should be implausible")
+	}
+	if implausibleText("Please send a referral to the epilepsy clinic and copy Dr. Nguyen.", make([]byte, 44+5*2*liveSampleRate)) {
+		t.Fatal("a normal 5 s sentence flagged")
+	}
+}

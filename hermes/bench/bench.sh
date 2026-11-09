@@ -8,6 +8,8 @@
 # OLD_IMAGE may be "-" to skip it. NEW_ENV adds env to the new container, e.g.
 #   NEW_ENV="-e DICTION_SEGMENT_MIN_MS=8000"; PREVIEW=0 skips the live-text runs;
 # PREVIEW_URL/PREVIEW_MODEL send partials to a separate backend.
+# VARIANTS="min12:DICTION_SEGMENT_MIN_MS=12000 min16:DICTION_SEGMENT_MIN_MS=16000" adds more
+# NEW_IMAGE containers with other settings (label:VAR=VAL[,VAR=VAL]), interleaved too.
 set -eu
 OLD=$1 NEW=$2 CLIPS=$3 OUT=$4 REPS=${5:-3}
 : "${BACKEND_URL:?set BACKEND_URL}" "${BACKEND_MODEL:?set BACKEND_MODEL}"
@@ -37,15 +39,26 @@ run() { # label port file [client flags]
 start dg-new "$NEW" 8081 -e DICTION_SEGMENTED_FINAL=true -e DICTION_DEBUG_STREAM=true -e DICTION_PREVIEW=chunked \
 	${PREVIEW_URL:+-e DICTION_PREVIEW_URL=$PREVIEW_URL} ${PREVIEW_MODEL:+-e DICTION_PREVIEW_MODEL=$PREVIEW_MODEL} ${NEW_ENV:-}
 [ "$OLD" != "-" ] && start dg-old "$OLD" 8082
-# Interleaved: old and new take turns on each clip, so anything else loading the GPU
-# during the bench slows both alike. Requests still never overlap.
+port=8083
+for v in ${VARIANTS:-}; do
+	envs=""
+	for kv in $(echo "${v#*:}" | tr ',' ' '); do envs="$envs -e $kv"; done
+	# shellcheck disable=SC2086
+	start "dg-${v%%:*}" "$NEW" "$port" -e DICTION_SEGMENTED_FINAL=true -e DICTION_DEBUG_STREAM=true $envs
+	port=$((port + 1))
+done
+# Interleaved: every image/setting takes its turn on each clip, so anything else loading
+# the GPU during the bench slows them alike. Requests still never overlap.
 for i in $(seq 1 "$REPS"); do
 	for c in "$CLIPS"/*.ogg; do
 		[ "$OLD" != "-" ] && run old 8082 "$c"
 		run "$LABEL" 8081 "$c"
+		port=8083
+		for v in ${VARIANTS:-}; do run "${v%%:*}" "$port" "$c"; port=$((port + 1)); done
 	done
 done
 [ "$OLD" != "-" ] && stop dg-old
+for v in ${VARIANTS:-}; do podman logs "dg-${v%%:*}" >"$OUT.${v%%:*}.log" 2>&1; stop "dg-${v%%:*}"; done
 if [ "${PREVIEW:-1}" = 1 ]; then
 	# Live text, as the coming app build would ask for it (Opus; PREVIEW_PCM=1 adds PCM).
 	for i in $(seq 1 "$REPS"); do for c in "$CLIPS"/*.ogg; do run new-preview 8081 "$c" -preview; done; done
