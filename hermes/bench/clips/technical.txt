@@ -1,0 +1,1 @@
+I restarted the podman Quadlet on the Strix Halo box this morning. The GUFO speech gateway now reloads the vocabulary file on every request. Tailscale serve exposes it only inside the tailnet. Next I want to check whether the dictation socket stays stable overnight. If it does not, roll back to the previous image and open an issue.

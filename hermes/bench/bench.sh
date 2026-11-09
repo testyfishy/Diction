@@ -33,20 +33,25 @@ run() { # label port file [client flags]
 }
 
 : >"$OUT"
-if [ "$OLD" != "-" ]; then
-	start dg-old "$OLD" 8082
-	for i in $(seq 1 "$REPS"); do for c in "$CLIPS"/*.ogg; do run old 8082 "$c"; done; done
-	stop dg-old
-fi
-
 # shellcheck disable=SC2086
 start dg-new "$NEW" 8081 -e DICTION_SEGMENTED_FINAL=true -e DICTION_DEBUG_STREAM=true -e DICTION_PREVIEW=chunked \
 	${PREVIEW_URL:+-e DICTION_PREVIEW_URL=$PREVIEW_URL} ${PREVIEW_MODEL:+-e DICTION_PREVIEW_MODEL=$PREVIEW_MODEL} ${NEW_ENV:-}
-for i in $(seq 1 "$REPS"); do for c in "$CLIPS"/*.ogg; do run "$LABEL" 8081 "$c"; done; done
+[ "$OLD" != "-" ] && start dg-old "$OLD" 8082
+# Interleaved: old and new take turns on each clip, so anything else loading the GPU
+# during the bench slows both alike. Requests still never overlap.
+for i in $(seq 1 "$REPS"); do
+	for c in "$CLIPS"/*.ogg; do
+		[ "$OLD" != "-" ] && run old 8082 "$c"
+		run "$LABEL" 8081 "$c"
+	done
+done
+[ "$OLD" != "-" ] && stop dg-old
 if [ "${PREVIEW:-1}" = 1 ]; then
-	# Live text, as the coming app build would ask for it: PCM and Opus.
-	for c in "$CLIPS"/*.wav; do run new-preview 8081 "$c" -preview; done
-	for c in "$CLIPS"/*.ogg; do run new-preview 8081 "$c" -preview; done
+	# Live text, as the coming app build would ask for it (Opus; PREVIEW_PCM=1 adds PCM).
+	for i in $(seq 1 "$REPS"); do for c in "$CLIPS"/*.ogg; do run new-preview 8081 "$c" -preview; done; done
+	if [ "${PREVIEW_PCM:-0}" = 1 ]; then
+		for i in $(seq 1 "$REPS"); do for c in "$CLIPS"/*.wav; do run new-preview-pcm 8081 "$c" -preview; done; done
+	fi
 fi
 podman logs dg-new >"$OUT.new.log" 2>&1
 stop dg-new
