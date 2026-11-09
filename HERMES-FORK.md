@@ -50,7 +50,23 @@ About 3× faster. Live text (with a future app): first words 1.4 s after you sta
 **The cost:** each piece is transcribed without the audio that comes after it, so an
 uncertain word can come out differently. In the clinic note, every pass wrote "lecanemab"
 for "lacosamide", and replaced a doctor's name that is not in the hint list with a name that
-is. The whole recording got both right.
+is. The whole recording got both right in that run.
+
+But the speech model is not stable on such words either way. An hour later the *same*
+whole recording, sent the same way, came back with a third spelling ("lecasmide") on every
+request. So these words are a coin toss, and cutting into pieces only changes which side
+it lands. Pieces of 12 s or 16 s did not fix it (5 passes each):
+
+| Minimum piece | Average wait | Clinic-note errors per pass |
+|---|---|---|
+| 8 s (default) | 0.72 s | 3 |
+| 12 s | 1.79 s | 41: the model appended its whole hint list to the text |
+| 16 s | 0.76 s | 3 |
+
+The 12 s result exposed a real failure: on a short piece the model can write out its
+hint list. The gateway now rejects any piece with more text than its audio could hold
+(over 25 characters per second) and transcribes the whole recording instead. With that
+guard, the 12 s run gave correct text but waited 5.7 s.
 
 ## Settings (environment variables, all off by default)
 
