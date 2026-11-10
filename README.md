@@ -1,13 +1,17 @@
-## Fork: faster final text for the self-hosted Diction gateway
+# Diction gateway fork: faster final text
+
+> This is a fork of [DictionLabs/Diction](https://github.com/DictionLabs/Diction), changing only
+> the self-hosted gateway. For the app and the official gateway, use the original repository.
 
 **Not affiliated with DictionLabs.** This fork adds an optional "pieces" mode to Diction's
 self-hosted gateway: it transcribes at pauses during dictation, so after "done" only the last
 piece is left and the final text arrives in well under a second at any length. Benchmarks use
 Qwen3-ASR-1.7B served by GUFO on AMD Strix Halo.
 
-Code: branch [`hermes/live-text`](https://github.com/testyfishy/Diction/tree/hermes/live-text).
-Results, settings and method:
-[HERMES-FORK.md](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md).
+- **Code:** branch [`hermes/live-text`](https://github.com/testyfishy/Diction/tree/hermes/live-text);
+  fixed version: tag [`v15.0-fork.1`](https://github.com/testyfishy/Diction/tree/v15.0-fork.1)
+- **Build and run:** [build steps and tested settings](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md#build-and-run)
+- **Full notes:** [results, settings and method](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md)
 
 ### Pieces vs live text
 
