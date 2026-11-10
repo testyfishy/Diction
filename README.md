@@ -1,4 +1,4 @@
-## ⚡ Fork: faster final text for the self-hosted Diction gateway
+## Fork: faster final text for the self-hosted Diction gateway
 
 **Not affiliated with DictionLabs.** This fork adds an optional "pieces" mode to Diction's
 self-hosted gateway: it transcribes at pauses during dictation, so after "done" only the last
@@ -56,14 +56,14 @@ only on commit, so drafts on it are re-transcriptions about once a second.
 - **Short dictations:** pieces are 3.5× faster but make almost twice the errors.
 - **Two-minute dictations:** pieces are 35× faster (0.4 s vs 14 s) *and* more accurate
   (3.6% vs 4.5% wrong words; 3.0% with table + fix).
-- **Recommended:** whole for the first 15 s, then pieces, with the table
+- **Best measured setting:** whole for the first 15 s, then pieces, with the table
   (`DICTION_SEGMENT_FIRST_MIN_MS=15000`). Over a length mix of mostly short dictations:
   4.14% wrong words (whole: 4.38%), 0.77 s mean wait (whole: 1.63 s; at 2 minutes 0.6 s
   instead of 14.5 s). The whole-recording wait grows with the square of the length; plain
   pieces only stop costing accuracy at about 51 s, and a 15 s first piece removes most of
   that cost.
 - **GUFO cuts long transcripts short by default** (~256-token reply cap: a 2-minute whole
-  recording lost its last third). Send `max_tokens=512` with each request; pieces never hit it.
+  recording lost its last third). Requesting `max_tokens=512` avoids it; pieces never hit the cap.
 
 *Everything below this section is the original Diction README.*
 

@@ -42,7 +42,7 @@ streaming   talk ......................................  stop → final
 
 They combine: drafts on screen during dictation, pieces for a fast final.
 
-**Can Qwen3-ASR on GUFO stream for real? No.** Tested with `hermes/bench/rt_probe.py`, a
+**Qwen3-ASR on GUFO does not stream input.** Tested with `hermes/bench/rt_probe.py`, a
 26 s clip played at real-time pace:
 
 - `/v1/realtime` (OpenAI-style WebSocket) accepts audio but sends nothing until
@@ -85,10 +85,10 @@ technical terms above all). Longer pieces (12 s, 16 s) did not fix it, and on a 
 the model sometimes wrote out its whole hint list (the gateway now rejects a piece with more
 text than its audio could hold).
 
-**So for short dictations where accuracy matters, keep pieces off.** Two-minute dictations
+**For short dictations, the whole recording is the more accurate mode.** Two-minute dictations
 are the opposite case (see below): there pieces are both faster and more accurate.
 
-## Can pieces be rescued? Lookup tables and a confidence fix
+## Lookup tables and a confidence fix
 
 Two add-ons, tested on the same 16 dictations × 5 passes, every combination:
 
@@ -120,7 +120,7 @@ Two add-ons, tested on the same 16 dictations × 5 passes, every combination:
 What this shows:
 
 - **Tables alone help, but not enough:** 10.1% → 8.6% wrong words, at no cost in time (under
-  2 ms; the table is indexed, so even 5,000 terms stay fast). Fill it with real terms: a table
+  2 ms; the table is indexed, so even 5,000 terms stay fast). The terms need to be real: a table
   padded with look-alikes makes pointless swaps.
 - **The confidence fix closes most of the gap:** 6.2% wrong words, against 5.7% for the whole
   recording, and the best term spelling of any mode (85%). It improved 155 clip-passes and made
@@ -177,7 +177,7 @@ cut mid-sentence after 174–225 of 230–297 words (27% "wrong words", nearly a
 text); pieces never hit the cap. Asking for `max_tokens=512` (GUFO's maximum) returns the whole
 text for about 2 s more model time; the whole-recording numbers above are with that fix. 512
 tokens is roughly 3 minutes of speech, so a longer whole recording is still cut; pieces are not.
-If you serve Qwen3-ASR through GUFO, send `max_tokens` with every transcription request.
+The gateway used here sets `max_tokens` on every transcription request.
 
 ## Where to switch: whole for the first 15 s, then pieces
 
@@ -222,9 +222,9 @@ results are weighted to a length mix of 64% under 15 s, 15% 15–25 s, 12% 25–
 - The differences in accuracy are small and the intervals are wide: 15 s vs whole is −0.8
   points (90% interval −1.6 to +0.2). On the 16 short, term-dense dictations alone, 15 s is
   still 1.1 points worse than whole (20 s: 0.5 worse, not significant), because a 17–28 s
-  dictation leaves a short last piece. The speed gain is not in doubt.
+  dictation leaves a short last piece. The speed gain is consistent across all lengths.
 
-**Recommended: 15 s**, with the lookup table and `max_tokens=512`. In a real-time check the
+**Best measured: 15 s**, with the lookup table and `max_tokens=512`. In a real-time check the
 two-minute dictations came back in 0.4–0.6 s with the full text, a 26 s one in 0.75 s, a 19 s
 one (whole) in 1.3 s. Note: the minimum is checked when the pause qualifies and the cut goes in
 the middle of the pause, so the first cut can land a few tenths of a second before T (the
@@ -240,7 +240,7 @@ weighting).
 | `DICTION_SEGMENTED_FINAL` | `false` | Pieces mode. |
 | `DICTION_PREVIEW` | `off` | `chunked` turns on live text for clients that ask. |
 | `DICTION_SEGMENT_PAUSE_MS` / `_MIN_MS` / `_MAX_MS` | 700 / 8000 / 20000 | Where pieces are cut. |
-| `DICTION_SEGMENT_FIRST_MIN_MS` | `0` (= `_MIN_MS`) | First piece at least this long: shorter dictations go whole. 15000 recommended. |
+| `DICTION_SEGMENT_FIRST_MIN_MS` | `0` (= `_MIN_MS`) | First piece at least this long: shorter dictations go whole. 15000 measured best. |
 | `DICTION_PREVIEW_URL` / `_MODEL` | session backend | Optional faster backend for live text. |
 | `DICTION_DEBUG_STREAM` | `false` | Log timings per dictation (never audio, text or keys). |
 
