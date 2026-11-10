@@ -9,6 +9,37 @@ The work is on branch [`hermes/live-text`](https://github.com/testyfishy/Diction
 Full results, settings and how to reproduce every test:
 [HERMES-FORK.md](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md).
 
+### What I built, and what I'm working on with Diction's makers
+
+| | **Pieces** (built here, in daily use) | **Live text** (with the Diction app's maker) |
+|---|---|---|
+| What it changes | how soon the **final** text is ready | what you **see while you talk** |
+| While you talk | nothing on screen | a draft about once a second |
+| After you stop | text in 0.4–0.8 s instead of up to 16 s | the final replaces the draft |
+| App change needed | no | yes, in the maker's next app build |
+
+**Pieces makes the final text ready sooner.** The gateway listens while you talk, cuts the
+audio at pauses and transcribes each piece in the background. The screen stays blank while
+you talk; when you stop, only the last bit is left to transcribe, so the text arrives in
+0.4–0.8 s instead of up to 16 s. It works with today's app, because the app still gets just
+one final answer.
+
+**Live text shows words while you talk.** The app asks the server for previews; about once a
+second the server sends the whole transcript so far as a draft, and the app swaps in the
+final version when you stop. This needs the app maker's update, because today's app ignores
+anything sent before you stop. On its own it doesn't make the final faster: the final still
+comes from transcribing the whole recording.
+
+**The two fit together:** drafts on screen while you talk, pieces for a fast final. The app's
+maker is adding live text for self-hosted servers and has asked me to test it
+([DictionLabs/Diction#29](https://github.com/DictionLabs/Diction/issues/29)); the gateway side
+goes behind the hook he named. True word-by-word streaming is a further step: Qwen3-ASR on GUFO
+transcribes only after it is told to, so drafts on this model are re-transcriptions about once
+a second. Details: [how the three differ](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md#pieces-live-text-and-true-streaming-are-three-different-things)
+and [the plan](https://github.com/testyfishy/Diction/blob/hermes/live-text/hermes/LIVE-TEXT-PLAN.md).
+
+### Results
+
 **Short dictations** (16 clips of 17–28 s):
 
 ![Short dictations: wrong words and speech-model time after you stop, by mode](assets/hermes/short-results.svg)
@@ -38,7 +69,7 @@ Full results, settings and how to reproduce every test:
 - **Live trial, from 2026-11-09:** a few weeks of everyday use, judged against 72 real
   whole-recording dictations (median wait 0.96 s, 2.3 s at 25–40 s, 16 s at 2 minutes) by
   targets set in advance. Only timings and counts are logged, never text. See
-  [Live trial](HERMES-FORK.md#live-trial-from-2026-11-09-a-few-weeks-of-everyday-use).
+  [Live trial](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md#live-trial-from-2026-11-09-a-few-weeks-of-everyday-use).
 
 *Everything below this section is the original Diction README.*
 
