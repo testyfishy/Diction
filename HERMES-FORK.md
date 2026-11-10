@@ -244,6 +244,31 @@ weighting).
 | `DICTION_PREVIEW_URL` / `_MODEL` | session backend | Optional faster backend for live text. |
 | `DICTION_DEBUG_STREAM` | `false` | Log timings per dictation (never audio, text or keys). |
 
+## Build and run
+
+Tag `v15.0-fork.1` marks a fixed version of the code described here. Build the gateway image
+from the `gateway/` folder. Set `VERSION` to the upstream release: the app compares it with its own
+version, and the default `dev` is treated as an untagged build.
+
+```sh
+git clone -b v15.0-fork.1 https://github.com/testyfishy/Diction.git
+docker build --build-arg VERSION=v15.0 -t diction-gateway:fork Diction/gateway
+```
+
+To run it, follow the upstream setup in [README.md](README.md) and replace the gateway image
+with `diction-gateway:fork`. Then add the settings for the mode under test. The tested
+configuration was:
+
+```yaml
+    environment:
+      DICTION_SEGMENTED_FINAL: "true"
+      DICTION_SEGMENT_FIRST_MIN_MS: "15000"
+      DICTION_PREVIEW: "chunked"        # live text, for clients that ask
+      DICTION_DEBUG_STREAM: "true"      # per-dictation timings in the log
+```
+
+With every setting left off, the fork behaves like upstream `release/v15.0`.
+
 ## How the tests were done
 
 **Input voice.** Each clip is synthesized sentence by sentence with Qwen3-TTS
