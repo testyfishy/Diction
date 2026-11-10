@@ -23,6 +23,43 @@ waits for the app makers' update** (issue #29, TestFlight).
 Both are off by default. If anything fails mid-way, the gateway sends the whole recording
 exactly as upstream does, so a dictation is never lost.
 
+## Pieces, live text and true streaming are three different things
+
+| | Pieces (ours, live now) | Live text (the app maker's plan) | True streaming |
+|---|---|---|---|
+| What it changes | how soon the **final** text is ready | what you **see while you talk** | how the **model** listens |
+| While you talk | nothing on screen | a draft about once a second, replaced each time | words appear as they are spoken |
+| After you stop | 0.4–0.8 s, any length | final as today (whole recording, or our pieces) | almost nothing left to do |
+| Needs an app change | no | yes: today's app reads one frame, after `done` | yes, same as live text |
+| Needs the model to stream | no | no | yes |
+
+```
+pieces      talk ...... | pause ...... | pause ....  stop → last piece → final
+live text   talk ......................................  stop → final
+            draft ↑ draft ↑ draft ↑ draft ↑ (each the whole transcript so far)
+streaming   talk ......................................  stop → final
+            word word word word word word word word ... (the model decodes as audio arrives)
+```
+
+They combine: drafts on screen while you talk, pieces for a fast final.
+
+**Can Qwen3-ASR on GUFO stream for real? No.** Tested 2026-11-09 with
+`hermes/bench/rt_probe.py`, a 26 s clip played at real-time pace:
+
+- `/v1/realtime` (OpenAI-style WebSocket) accepts audio but sends nothing until
+  `input_audio_buffer.commit`. It then transcribes the whole buffer at once and streams the
+  words out (first word 0.3 s after commit).
+- Committing every 2 s gives a result 0.2–0.3 s after each commit, but each commit is a
+  separate item heard without context: 2–8 words each, cut wherever the 2 s lands. That is
+  pieces with blind cuts, worse than cutting at pauses.
+- SSE (`stream=true` on `/v1/audio/transcriptions`) streams the text out quickly, but only
+  after the whole file is uploaded.
+
+So on this model, live text means re-transcribing the open piece (since the last pause) about
+once a second, which the built-in preview (`DICTION_PREVIEW=chunked`) already does: first
+words at 1.1–1.4 s in the bench. Word-by-word streaming needs a streaming-native model for the
+drafts, with Qwen3-ASR kept for the final. The plan is in `hermes/LIVE-TEXT-PLAN.md`.
+
 ## Short dictations: pieces are 3× faster but make nearly twice the errors
 
 16 dictations, 5 passes each, upstream and fork taking turns (details below):
