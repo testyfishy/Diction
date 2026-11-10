@@ -256,6 +256,13 @@ type liveEngine struct {
 
 	segments  int
 	segmentMs int64 // total backend time spent on segments while recording
+
+	// Preview counters, for the debug log only.
+	started   time.Time
+	partials  int   // partial requests that returned
+	partialMs int64 // backend time spent on them
+	emitted   int   // interims handed to the writer
+	firstAtMs int64 // first interim, ms after the engine started; -1 = none
 }
 
 func newLiveEngine(parent context.Context, cfg LiveConfig, final, partial liveTranscribeFunc) *liveEngine {
@@ -266,6 +273,7 @@ func newLiveEngine(parent context.Context, cfg LiveConfig, final, partial liveTr
 		wake: make(chan struct{}, 1), workerDone: make(chan struct{}),
 		interims: make(chan string, 1),
 		det:      pauseDetector{cfg: cfg},
+		started:  time.Now(), firstAtMs: -1,
 	}
 	if partial == nil {
 		e.interimsClosed = true
@@ -421,6 +429,10 @@ func (e *liveEngine) emit(text string) {
 	if e.interimsClosed || text == "" {
 		return
 	}
+	e.emitted++
+	if e.firstAtMs < 0 {
+		e.firstAtMs = time.Since(e.started).Milliseconds()
+	}
 	select {
 	case e.interims <- text:
 	default:
@@ -523,11 +535,14 @@ func (e *liveEngine) step() bool {
 	e.partialFrom, e.partialAt = from, end
 	e.mu.Unlock()
 
+	pstart := time.Now()
 	text, err := e.partial(pctx, wav)
 	pcancel()
 
 	e.mu.Lock()
 	e.partialCancel = nil
+	e.partials++
+	e.partialMs += time.Since(pstart).Milliseconds()
 	// A segment may have committed meanwhile; this partial is then stale.
 	if err == nil && e.committed == from && !implausibleText(text, wav) {
 		joined := joinSegments(append(append([]string(nil), e.texts...), text), e.english)
@@ -543,6 +558,11 @@ func (e *liveEngine) stopInterims() {
 	if !e.interimsClosed {
 		e.interimsClosed = true
 		close(e.interims)
+		if e.cfg.Debug && e.partial != nil {
+			// Counts and times only, never the text.
+			log.Printf("live: preview interims=%d first_at=%dms partials=%d partial_ms=%d in_flight=%v",
+				e.emitted, e.firstAtMs, e.partials, e.partialMs, e.partialCancel != nil)
+		}
 	}
 	if e.partialCancel != nil {
 		e.partialCancel()
