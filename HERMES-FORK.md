@@ -223,7 +223,7 @@ bench fit above.
 
 **What is tracked.** `hermes/trial/collect.sh` copies the gateways' metric lines out of the
 journal into a private file on the server (only lengths, timings, piece counts, character
-counts and lookup-table swaps; never text, audio or keys), every 6 hours from a user timer
+counts and how many lookup-table swaps, without the words; never text, audio or keys), every 6 hours from a user timer
 (`hermes/trial/diction-trial.timer`). `hermes/bench/assess_live.py` turns it into: wait by length band
 against the baseline, time saved against the baseline fit, how dictations were served (whole
 under 15 s, pieces, fallback), piece failures and backend errors, table swaps, and characters
