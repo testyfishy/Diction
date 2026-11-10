@@ -1,75 +1,69 @@
-## ⚡ Hermes fork: making self-hosted Diction faster on Strix Halo
+## ⚡ Fork: faster final text for the self-hosted Diction gateway
 
-**This is a personal fork, not affiliated with DictionLabs.** I run Diction's self-hosted
-gateway on an AMD Strix Halo machine, with speech-to-text by **Qwen3-ASR-1.7B served by GUFO**,
-and I'm tuning it so the text comes back as fast as possible after you stop talking, without
-losing accuracy. All speech stays on my own machines.
+**Not affiliated with DictionLabs.** This fork adds an optional "pieces" mode to Diction's
+self-hosted gateway: it transcribes at pauses during dictation, so after "done" only the last
+piece is left and the final text arrives in well under a second at any length. Benchmarks use
+Qwen3-ASR-1.7B served by GUFO on AMD Strix Halo.
 
-The work is on branch [`hermes/live-text`](https://github.com/testyfishy/Diction/tree/hermes/live-text).
-Full results, settings and how to reproduce every test:
+Code: branch [`hermes/live-text`](https://github.com/testyfishy/Diction/tree/hermes/live-text).
+Results, settings and method:
 [HERMES-FORK.md](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md).
 
-### What I built, and what I'm working on with Diction's makers
+### Pieces vs live text
 
-| | **Pieces** (built here, in daily use) | **Live text** (with the Diction app's maker) |
+| | **Pieces** (this fork) | **Live text** (needs client support) |
 |---|---|---|
-| What it changes | how soon the **final** text is ready | what you **see while you talk** |
-| While you talk | nothing on screen | a draft about once a second |
-| After you stop | text in 0.4–0.8 s instead of up to 16 s | the final replaces the draft |
-| App change needed | no | yes, in the maker's next app build |
+| What it changes | how soon the **final** text is ready | what the user **sees during dictation** |
+| During dictation | nothing on screen | a draft about once a second |
+| After stop | text in 0.4–0.8 s at any length | the final replaces the draft |
+| Client change needed | no | yes: the client must opt in and show drafts |
 
-**Pieces makes the final text ready sooner.** The gateway listens while you talk, cuts the
-audio at pauses and transcribes each piece in the background. The screen stays blank while
-you talk; when you stop, only the last bit is left to transcribe, so the text arrives in
-0.4–0.8 s instead of up to 16 s. It works with today's app, because the app still gets just
-one final answer.
+**Pieces makes the final text ready sooner.** The gateway cuts the audio at pauses and
+transcribes each piece in the background during dictation. Nothing is shown until the user
+stops; then only the last piece is left, so the text arrives in 0.4–0.8 s instead of a wait
+that grows with the recording (about 14 s for two minutes in the benchmark). It works with the
+current app, which still receives a single final result.
 
-**Live text shows words while you talk.** The app asks the server for previews; about once a
-second the server sends the whole transcript so far as a draft, and the app swaps in the
-final version when you stop. This needs the app maker's update, because today's app ignores
-anything sent before you stop. On its own it doesn't make the final faster: the final still
-comes from transcribing the whole recording.
+**Live text shows draft words during dictation.** The client opts in (`?preview=cloud`), and
+about once a second the gateway sends the whole transcript so far; the final replaces it at
+the end. The current app reads only the frame after "done", so this needs client support. On
+its own it does not make the final faster.
 
-**The two fit together:** drafts on screen while you talk, pieces for a fast final. The app's
-maker is adding live text for self-hosted servers and has asked me to test it
-([DictionLabs/Diction#29](https://github.com/DictionLabs/Diction/issues/29)); the gateway side
-goes behind the hook he named. True word-by-word streaming is a further step: Qwen3-ASR on GUFO
-transcribes only after it is told to, so drafts on this model are re-transcriptions about once
-a second. Details: [how the three differ](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md#pieces-live-text-and-true-streaming-are-three-different-things)
-and [the plan](https://github.com/testyfishy/Diction/blob/hermes/live-text/hermes/LIVE-TEXT-PLAN.md).
+**The two combine:** drafts during dictation, pieces for a fast final. The gateway side of live
+text is implemented (`DICTION_PREVIEW=chunked`, PCM and Opus sessions). True word-by-word
+streaming needs a model that decodes as audio arrives; Qwen3-ASR as served by GUFO transcribes
+only on commit, so drafts on it are re-transcriptions about once a second.
+[How the three differ](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md#pieces-live-text-and-true-streaming-are-three-different-things).
 
 ### Results
 
 **Short dictations** (16 clips of 17–28 s):
 
-![Short dictations: wrong words and speech-model time after you stop, by mode](assets/hermes/short-results.svg)
+![Short dictations: wrong words and speech-model time after stop, by mode](assets/hermes/short-results.svg)
 
 **Two-minute dictations** (8 clips of 103–124 s):
 
-![Two-minute dictations: wrong words and speech-model time after you stop, by mode](assets/hermes/long-results.svg)
+![Two-minute dictations: wrong words and speech-model time after stop, by mode](assets/hermes/long-results.svg)
 
-**Where to switch from whole to pieces** (130 dictations of 8–124 s, weighted to real use):
+**Where to switch from whole to pieces** (130 dictations of 8–124 s, weighted by length mix):
 
 ![Where to switch: wrong words and model time after stop for whole, pieces and each switch point](assets/hermes/switch-results.svg)
 
-- **Whole**: upstream behaviour, the whole recording is transcribed after you stop.
-  **Pieces**: transcribed at each pause while you talk, so only the last piece is left.
-  **Table**: a fuzzy lookup table of your terms fixes near-miss spellings (under 2 ms).
+- **Whole**: upstream behaviour, the whole recording is transcribed after stop.
+  **Pieces**: transcribed at each pause during dictation, so only the last piece is left.
+  **Table**: a fuzzy lookup table of known terms fixes near-miss spellings (under 2 ms).
   **Fix**: low-confidence words in the pieces are re-checked with the audio around them.
 - **Short dictations:** pieces are 3.5× faster but make almost twice the errors.
 - **Two-minute dictations:** pieces are 35× faster (0.4 s vs 14 s) *and* more accurate
   (3.6% vs 4.5% wrong words; 3.0% with table + fix).
-- **Running now:** whole for the first 15 s, then pieces, with the table. On real dictation
-  lengths: 4.14% wrong words (whole: 4.38%), 0.77 s mean wait (whole: 1.63 s; at 2 minutes
-  0.6 s instead of 14.5 s). The whole-recording wait grows with the square of the length;
-  plain pieces only stop costing accuracy at about 51 s, and a 15 s first piece removes most
-  of that cost.
+- **Recommended:** whole for the first 15 s, then pieces, with the table
+  (`DICTION_SEGMENT_FIRST_MIN_MS=15000`). Over a length mix of mostly short dictations:
+  4.14% wrong words (whole: 4.38%), 0.77 s mean wait (whole: 1.63 s; at 2 minutes 0.6 s
+  instead of 14.5 s). The whole-recording wait grows with the square of the length; plain
+  pieces only stop costing accuracy at about 51 s, and a 15 s first piece removes most of
+  that cost.
 - **GUFO cuts long transcripts short by default** (~256-token reply cap: a 2-minute whole
   recording lost its last third). Send `max_tokens=512` with each request; pieces never hit it.
-- **Live trial, from 2026-11-09:** a few weeks of everyday use, judged against 72 real
-  whole-recording dictations (median wait 0.96 s, 2.3 s at 25–40 s, 16 s at 2 minutes) by
-  targets set in advance. Only timings and counts are logged, never text. See
-  [Live trial](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md#live-trial-from-2026-11-09-a-few-weeks-of-everyday-use).
 
 *Everything below this section is the original Diction README.*
 
