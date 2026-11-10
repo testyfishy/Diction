@@ -17,7 +17,8 @@ How pieces, live text and true streaming differ: see `HERMES-FORK.md`.
 
 - **The app sends Opus** (211 of 211 logged sessions). The hook is PCM-only: an Opus session
   gets no relay. Our live engine already decodes Opus as it arrives (ffmpeg, kept up in real
-  time in tests), so the gateway can feed the hook PCM from Opus sessions too.
+  time in tests), so the gateway feeds the relay PCM either way: PCM sessions directly, Opus
+  sessions decoded on arrival. No app requirement, so no need to ask; raise it in the PR.
 - **The hook's signature is `(ctx, language)`**: no backend, prompt or custom words. A relay
   that re-transcribes with the session's own backend and hint list needs those.
 - **GUFO's Qwen3-ASR does not stream input** (tests in `HERMES-FORK.md`). Drafts on this model
@@ -25,9 +26,9 @@ How pieces, live text and true streaming differ: see `HERMES-FORK.md`.
 
 ## Steps
 
-**1. Tell him where we are (now).** Comment on #29: the pieces trial on Strix Halo and its
-numbers, the branch, the Opus point, and the wire-format proposal. Ask which branch a PR
-should target. Owner's approval before posting.
+**1. Tell him where we are (now).** A short comment on #29: yes to TestFlight, the pieces
+trial on Strix Halo in one paragraph, a link to the fork. No questions; detail stays in the
+fork. Owner's approval before posting. (Which branch a PR targets: ask when a PR is ready.)
 
 **2. Move the built-in preview behind the hook (gateway, before TestFlight).** Make the
 built-in preview a `PreviewSession` implementation, so the app talks to one interface
