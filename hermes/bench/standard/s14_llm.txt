@@ -1,1 +1,0 @@
-The GGUF file is quantized to save memory. Llama.cpp loads it with a long context window. Embeddings for the RAG search come from a smaller model. The MCP server exposes the tools over JSON. OAuth tokens are stored outside the repository.

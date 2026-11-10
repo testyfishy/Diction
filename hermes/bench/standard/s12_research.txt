@@ -1,1 +1,0 @@
-The protocol is registered on PROSPERO. We will run the meta-analysis with a random effects model. Data goes into REDCap, and the IRB approved the consent form last week. Dr. Okafor will check the risk of bias.

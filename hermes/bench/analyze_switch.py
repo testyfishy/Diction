@@ -101,7 +101,7 @@ def main():
         nb = defaultdict(int)
         for k in pts:
             nb[band(k[1])] += 1
-        print(f"\nOver your real length mix ({len(real)} dictations; share by band: "
+        print(f"\nOver the given length mix ({len(real)} dictations; share by band: "
               + ", ".join(f"{a}-{b}s {share[(a, b)] * 100:.0f}%" for a, b in BANDS) + ")")
         print(f"{'mode':<8}{'wrong words':>13}{'mean wait':>11}{'worst band wait':>17}")
         for m in modes:

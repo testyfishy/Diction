@@ -1,1 +1,0 @@
-The podman Quadlet restarts the container after every reboot. Tailscale keeps the dashboard private to the tailnet. I moved the model to Vulkan because ROCm crashed under load. Next step is a cron job that backs up the SQLite database.

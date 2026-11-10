@@ -1,9 +1,0 @@
-[Unit]
-Description=Collect Diction trial numbers every 6 hours
-
-[Timer]
-OnCalendar=00/6:15
-Persistent=true
-
-[Install]
-WantedBy=timers.target

@@ -1,1 +1,0 @@
-The Quadlet file lives in the user config folder. Podman starts it at boot. ROCm was faster than Vulkan on this card. The SQLite file is backed up by a cron job. Tailscale handles the private network.
