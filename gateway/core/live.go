@@ -660,6 +660,20 @@ func (p livePreview) Send([]byte)             {}
 func (p livePreview) Interims() <-chan string { return p.e.interims }
 func (p livePreview) Stop()                   { p.e.stopInterims() }
 
+// PreviewCapabilities reports what /v1/models should advertise: whether preview=cloud
+// gets interim frames on PCM sessions, and on Opus sessions. It mirrors the stream
+// handler: a PreviewRelay serves PCM only; the built-in preview serves PCM, and Opus
+// when ffmpeg is there to decode it as it arrives.
+func (g *Gateway) PreviewCapabilities() (pcm, opus bool) {
+	if PreviewRelay != nil {
+		return true, false
+	}
+	if !g.live.Preview {
+		return false, false
+	}
+	return true, lookupFfmpeg() != ""
+}
+
 // startLive opens a session's engine against the backend routing chose, with the same
 // language, prompt and custom words the whole-clip request would send — so segment
 // text goes through exactly the same backend-side processing as today's final.

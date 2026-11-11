@@ -16,8 +16,10 @@ pieces   [ talk ...... | pause ...... | ........ ] stop → [ last piece ] → t
 ```
 
 **Live text** (`DICTION_PREVIEW=chunked`): draft words during dictation, for clients that ask
-(`?preview=cloud`). The current Diction app does not ask yet; it reads only the frame sent
-after "done".
+(`?preview=cloud`). With it on, `/v1/models` advertises `"preview": true` in `capabilities`,
+and `"preview_opus": true` when ffmpeg is present to decode Opus sessions; a client asks only
+when it sees `preview`, and sends PCM unless `preview_opus` is also true. The current Diction
+app does not ask yet; it reads only the frame sent after "done".
 
 Both are off by default. If anything fails mid-way, the gateway sends the whole recording
 exactly as upstream does, so a dictation is never lost.
@@ -238,7 +240,7 @@ weighting).
 | Variable | Default | Meaning |
 |---|---|---|
 | `DICTION_SEGMENTED_FINAL` | `false` | Pieces mode. |
-| `DICTION_PREVIEW` | `off` | `chunked` turns on live text for clients that ask. |
+| `DICTION_PREVIEW` | `off` | `chunked` turns on live text for clients that ask, and advertises it on `/v1/models`. |
 | `DICTION_SEGMENT_PAUSE_MS` / `_MIN_MS` / `_MAX_MS` | 700 / 8000 / 20000 | Where pieces are cut. |
 | `DICTION_SEGMENT_FIRST_MIN_MS` | `0` (= `_MIN_MS`) | First piece at least this long: shorter dictations go whole. 15000 measured best. |
 | `DICTION_PREVIEW_URL` / `_MODEL` | session backend | Optional faster backend for live text. |

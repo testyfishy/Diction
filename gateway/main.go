@@ -190,6 +190,9 @@ func buildMux() (http.Handler, string, error) {
 		keyRotation:    keyStore != nil && !keyStore.Pinned(),
 		postDeliveryMs: liveEnhanceTimeoutMs,
 	}
+	// Live text: the app asks for it (preview=cloud) only when this says so, and
+	// keeps sending Opus only when previewOpus is true.
+	caps.preview, caps.previewOpus = gw.PreviewCapabilities()
 	// Per-request upgrade: a caller holding a valid pairing key does get the
 	// text routes (withGatewayKey lets it past the guard), so tell it so.
 	capsForRequest := func(r *http.Request) capabilityFlags {
