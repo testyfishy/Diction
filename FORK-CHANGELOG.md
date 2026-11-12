@@ -1,7 +1,9 @@
 # Fork changelog
 
 Changes in this fork relative to upstream `release/v15.0`, newest first. Features are
-described in [FORK.md](FORK.md); bug fixes are tracked here.
+described in [FORK.md](FORK.md); bug fixes are tracked here. Fixes to unchanged upstream
+code are also kept on the `upstream-fixes` branch, based on upstream `main`, so they can be
+taken without the fork's features.
 
 ## v15.0-fork.2
 
@@ -20,6 +22,8 @@ described in [FORK.md](FORK.md); bug fixes are tracked here.
   - *Fix:* report the full length; the cap still bounds what is kept. With the debug log on,
     the decoder's exit state, stderr size and first stderr line are logged.
   - *Tests:* `gateway/core/stderr_writer_test.go`.
+  - *On its own:* branch [`upstream-fixes`](https://github.com/testyfishy/Diction/tree/upstream-fixes)
+    carries this fix alone on top of upstream `main`, without any fork feature.
 
 ### Added
 
