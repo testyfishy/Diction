@@ -123,6 +123,10 @@ type limitedStderrWriter struct {
 }
 
 func (lw *limitedStderrWriter) Write(p []byte) (int, error) {
+	// The full length, taken before p is cut to fit: returning the cut length is a
+	// short write, which makes os/exec stop draining stderr, and the process then
+	// dies on SIGPIPE at its next warning.
+	n := len(p)
 	remaining := lw.cap - lw.buf.Len()
 	if remaining > 0 {
 		if len(p) > remaining {
@@ -130,7 +134,7 @@ func (lw *limitedStderrWriter) Write(p []byte) (int, error) {
 		}
 		lw.buf.Write(p) //nolint:errcheck — writing to a bytes.Buffer is infallible
 	}
-	return len(p), nil // always report full write so exec doesn't get a short-write error
+	return n, nil // always report full write so exec doesn't get a short-write error
 }
 
 // readOggGranulepos returns the granule position from the last Ogg page in
@@ -970,7 +974,8 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 				oggMs = oggDurationMs(opusInputBuf.Bytes())
 			}
 			if ffmpegWaitErr != nil || (oggMs >= 0 && absInt64(decodedMs-oggMs) > 500) {
-				log.Printf("live: decode incomplete (decoded %dms of %dms); using the whole clip", decodedMs, oggMs)
+				log.Printf("live: decode incomplete (decoded %dms of %dms, decoder_exit_ok=%v, decoder_stderr=%d bytes); using the whole clip",
+					decodedMs, oggMs, ffmpegWaitErr == nil, ffmpegStderr.buf.Len())
 				liveBroken = true
 			}
 		}
