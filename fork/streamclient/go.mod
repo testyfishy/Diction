@@ -1,4 +1,4 @@
-module github.com/testyfishy/Diction/hermes/streamclient
+module github.com/testyfishy/Diction/fork/streamclient
 
 go 1.24
 

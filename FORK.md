@@ -1,6 +1,6 @@
 # Fork notes: faster final text on a self-hosted Diction gateway
 
-Branch `hermes/live-text`, based on upstream `release/v15.0`. Not affiliated with DictionLabs.
+Branch `live-text`, based on upstream `release/v15.0`. Not affiliated with DictionLabs. Changes and fixes: [FORK-CHANGELOG.md](FORK-CHANGELOG.md).
 
 ## What it adds
 
@@ -44,7 +44,7 @@ streaming   talk ......................................  stop → final
 
 They combine: drafts on screen during dictation, pieces for a fast final.
 
-**Qwen3-ASR on GUFO does not stream input.** Tested with `hermes/bench/rt_probe.py`, a
+**Qwen3-ASR on GUFO does not stream input.** Tested with `fork/bench/rt_probe.py`, a
 26 s clip played at real-time pace:
 
 - `/v1/realtime` (OpenAI-style WebSocket) accepts audio but sends nothing until
@@ -138,7 +138,7 @@ What this shows:
 end-to-end wait adds network and gateway overhead and grows when the GPU is shared (the bench
 above measured 0.86 s for pieces and 2.66 s for the whole recording under load).
 
-Tools: `hermes/bench/fuzzyfix.py` (table), `learn_rules.py`, `sim_repair.py` (the matrix
+Tools: `fork/bench/fuzzyfix.py` (table), `learn_rules.py`, `sim_repair.py` (the matrix
 above).
 
 ## Two-minute dictations: pieces win on speed and accuracy
@@ -147,7 +147,7 @@ The whole-recording wait grows faster than the recording, so the same test was r
 synthetic dictations of 103–124 s each (mixed technical and everyday content; one has a 30 s
 run with no real pause, to force the 20 s maximum cut), 5 passes each.
 
-![Two-minute dictations: wrong words and speech-model time after stop, by mode](assets/hermes/long-results.svg)
+![Two-minute dictations: wrong words and speech-model time after stop, by mode](assets/fork/long-results.svg)
 
 | Mode | Wrong words | Terms spelled right | Model time after stop | End-to-end wait (median) |
 |---|---|---|---|---|
@@ -195,7 +195,7 @@ port of the gateway's pause detector, which reproduces the gateway's logged cuts
 results are weighted to a length mix of 64% under 15 s, 15% 15–25 s, 12% 25–40 s and 8% longer
 (mostly short dictations, with a long tail).
 
-![Where to switch: wrong words and model time after stop for whole, pieces and each switch point](assets/hermes/switch-results.svg)
+![Where to switch: wrong words and model time after stop for whole, pieces and each switch point](assets/fork/switch-results.svg)
 
 | Length | Whole | Pieces (no switch) | Whole first 15 s | Whole first 20 s |
 |---|---|---|---|---|
@@ -232,7 +232,7 @@ one (whole) in 1.3 s. Note: the minimum is checked when the pause qualifies and 
 the middle of the pause, so the first cut can land a few tenths of a second before T (the
 simulation does the same).
 
-Tools: `hermes/bench/sim_switch.py` (sweep), `analyze_switch.py` (bands, fits, length-mix
+Tools: `fork/bench/sim_switch.py` (sweep), `analyze_switch.py` (bands, fits, length-mix
 weighting).
 
 ## Settings (environment variables, all off by default)
@@ -248,12 +248,12 @@ weighting).
 
 ## Build and run
 
-Tag `v15.0-fork.1` marks a fixed version of the code described here. Build the gateway image
+Tag `v15.0-fork.2` marks a fixed version of the code described here. Build the gateway image
 from the `gateway/` folder. Set `VERSION` to the upstream release: the app compares it with its own
 version, and the default `dev` is treated as an untagged build.
 
 ```sh
-git clone -b v15.0-fork.1 https://github.com/testyfishy/Diction.git
+git clone -b v15.0-fork.2 https://github.com/testyfishy/Diction.git
 docker build --build-arg VERSION=v15.0 -t diction-gateway:fork Diction/gateway
 ```
 
@@ -281,9 +281,9 @@ resampled to 16 kHz mono and encoded the way the app sends it: Ogg/Opus, 16 kb/s
 200 ms pages. Terms are drawn from a hint list, from a larger term library, and from neither.
 The test clips themselves are not included in this repository.
 
-**Measurement.** `hermes/streamclient` plays a clip like the app: each Ogg page at the moment
+**Measurement.** `fork/streamclient` plays a clip like the app: each Ogg page at the moment
 it would have been recorded, "done" right after the last one, timing "done" → final text.
-`hermes/bench/bench.sh` runs upstream and the fork as two containers taking turns on each
+`fork/bench/bench.sh` runs upstream and the fork as two containers taking turns on each
 clip, 5 passes, so anything else using the GPU slows both alike. Speech model: Qwen3-ASR-1.7B
 served by GUFO on AMD Strix Halo, behind a small gateway that adds a hint list, corrections and
 filler removal (the same for both). Wrong words: word error count against the script, ignoring
@@ -293,9 +293,9 @@ A clip directory holds `NAME.ogg` (and optionally `NAME.wav`), the reference tex
 `NAME.txt` and, for term scoring, one target term per line in `NAME.terms`:
 
 ```sh
-(cd hermes/streamclient && go build .)
+(cd fork/streamclient && go build .)
 BACKEND_URL=http://127.0.0.1:PORT BACKEND_MODEL=MODEL PREVIEW=0 LABEL=pieces8 \
-  sh hermes/bench/bench.sh UPSTREAM_IMAGE FORK_IMAGE CLIPS_DIR out.jsonl 5
-python3 hermes/bench/pairs.py out.jsonl CLIPS_DIR
-python3 hermes/bench/eval_fix.py out.jsonl CLIPS_DIR HINTS.txt LIBRARY.txt
+  sh fork/bench/bench.sh UPSTREAM_IMAGE FORK_IMAGE CLIPS_DIR out.jsonl 5
+python3 fork/bench/pairs.py out.jsonl CLIPS_DIR
+python3 fork/bench/eval_fix.py out.jsonl CLIPS_DIR HINTS.txt LIBRARY.txt
 ```
