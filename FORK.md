@@ -273,6 +273,60 @@ configuration was:
 
 With every setting left off, the fork behaves like upstream `release/v15.0`.
 
+## Live text and pieces together: verification
+
+Tag `v15.0-fork.3`, settings as in [Build and run](#build-and-run), drafts sent straight to
+the speech model (`DICTION_PREVIEW_URL`). One gateway played each clip as a client that does
+not ask for live text ("off") and as one that does ("drafts"), taking turns: 6 clips of
+3–13 s and 16 of 17–28 s in two passes, and 8 clips of 103–124 s in one pass (104 runs).
+
+| Length | Runs per client | Final wait, off | Final wait, drafts | First draft | Drafts per second | Wrong words, off | Wrong words, drafts |
+|---|---|---|---|---|---|---|---|
+| under 5 s | 4 | 0.40 s | 0.40 s | 0.94 s | 2.3 | – | – |
+| 5–15 s | 8 | 0.77 s | 0.77 s | 0.94 s | 2.2 | – | – |
+| 15–30 s | 32 | 0.61 s | 0.61 s | 0.94 s | 2.0 | 5.9% | 5.9% |
+| over 60 s | 8 | 0.43 s | 0.42 s | 0.94 s | 2.2 | 2.8% | 2.8% |
+
+Waits and first-draft times are medians. Clips under 15 s are cut from longer ones and have
+no reference script, so no error rate.
+
+What had to hold, and did:
+
+- **Drafts on every run that asked:** 52 of 52. The first arrives about 0.9 s into the
+  dictation, then about two a second.
+- **Same final text with or without drafts:** 52 of 52 identical. Drafts never touch the
+  final; they are separate requests, cancelled at stop.
+- **No cost to the final:** the wait after stop is the same either way, at every length.
+- **Nothing after the final:** 0 frames. A client can treat the first non-interim frame after
+  "done" as the result.
+- **No fallbacks:** 104 of 104 finals came from the live engine, 72 of them with pieces done
+  during dictation; 0 decode checks failed, 0 pieces failed.
+- **Capabilities:** with `DICTION_PREVIEW=chunked` the gateway reports `"preview": true` and
+  `"preview_opus": true`; with it off, both false, and a client that asks anyway gets a
+  normal final and no drafts (covered by the gateway's tests).
+
+Compatible with the live-text protocol of Diction for iOS 15.0.1: the app asks with
+`preview=cloud` when `capabilities.preview` is true and keeps sending Opus when
+`preview_opus` is true.
+
+**Decoder-warning fix.** `fork/bench/noisy_decoder.sh` runs each image with a decoder that
+writes to stderr throughout a 103 s clip. A build from before the fix (`v15.0-fork.1`) logs `live: decode incomplete
+(decoded 103240ms of 103240ms)` and falls back to the whole recording; `v15.0-fork.3`
+finishes from 9 pieces.
+
+To repeat it on other clips (`NAME.ogg`, optionally `NAME.txt`):
+
+```sh
+(cd fork/streamclient && go build .)
+BACKEND_URL=http://127.0.0.1:PORT BACKEND_MODEL=MODEL \
+  sh fork/bench/live_text.sh IMAGE CLIPS_DIR out.jsonl 2
+python3 fork/bench/live_text_report.py out.jsonl CLIPS_DIR
+BACKEND_URL=http://127.0.0.1:PORT BACKEND_MODEL=MODEL \
+  sh fork/bench/noisy_decoder.sh LONG_CLIP.ogg OLD_IMAGE NEW_IMAGE
+```
+
+The report prints timings and counts only, never transcript text.
+
 ## Known limits
 
 - **Drafts are re-transcriptions, not streaming.** Each draft is a new transcription of the

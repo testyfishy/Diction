@@ -12,6 +12,7 @@ Qwen3-ASR-1.7B served by GUFO on AMD Strix Halo.
   fixed version: tag [`v15.0-fork.3`](https://github.com/testyfishy/Diction/tree/v15.0-fork.3)
 - **Build and run:** [build steps and tested settings](https://github.com/testyfishy/Diction/blob/live-text/FORK.md#build-and-run)
 - **Full notes:** [results, settings and method](https://github.com/testyfishy/Diction/blob/live-text/FORK.md)
+- **Live text verification:** [104 runs, drafts on and off](https://github.com/testyfishy/Diction/blob/live-text/FORK.md#live-text-and-pieces-together-verification)
 - **Changes and fixes:** [fork changelog](https://github.com/testyfishy/Diction/blob/live-text/FORK-CHANGELOG.md)
 
 ### Pieces vs live text

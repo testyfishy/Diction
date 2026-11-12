@@ -20,6 +20,11 @@ taken without the fork's features.
     backend's answer is passed on as upstream does.
   - *Tests:* `gateway/core/live_invented_test.go`.
 
+### Added
+
+- Live-text verification: `fork/bench/live_text.sh`, `live_text_report.py` and
+  `noisy_decoder.sh`, with results in [FORK.md](FORK.md#live-text-and-pieces-together-verification).
+
 ### Changed
 
 - Documented `DICTION_PREVIEW_INTERVAL_MS` and the known limits of live text.
