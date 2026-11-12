@@ -8,10 +8,11 @@ self-hosted gateway: it transcribes at pauses during dictation, so after "done" 
 piece is left and the final text arrives in well under a second at any length. Benchmarks use
 Qwen3-ASR-1.7B served by GUFO on AMD Strix Halo.
 
-- **Code:** branch [`hermes/live-text`](https://github.com/testyfishy/Diction/tree/hermes/live-text);
-  fixed version: tag [`v15.0-fork.1`](https://github.com/testyfishy/Diction/tree/v15.0-fork.1)
-- **Build and run:** [build steps and tested settings](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md#build-and-run)
-- **Full notes:** [results, settings and method](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md)
+- **Code:** branch [`live-text`](https://github.com/testyfishy/Diction/tree/live-text);
+  fixed version: tag [`v15.0-fork.2`](https://github.com/testyfishy/Diction/tree/v15.0-fork.2)
+- **Build and run:** [build steps and tested settings](https://github.com/testyfishy/Diction/blob/live-text/FORK.md#build-and-run)
+- **Full notes:** [results, settings and method](https://github.com/testyfishy/Diction/blob/live-text/FORK.md)
+- **Changes and fixes:** [fork changelog](https://github.com/testyfishy/Diction/blob/live-text/FORK-CHANGELOG.md)
 
 ### Pieces vs live text
 
@@ -37,21 +38,21 @@ its own it does not make the final faster.
 text is implemented (`DICTION_PREVIEW=chunked`, PCM and Opus sessions). True word-by-word
 streaming needs a model that decodes as audio arrives; Qwen3-ASR as served by GUFO transcribes
 only on commit, so drafts on it are re-transcriptions about once a second.
-[How the three differ](https://github.com/testyfishy/Diction/blob/hermes/live-text/HERMES-FORK.md#pieces-live-text-and-true-streaming-are-three-different-things).
+[How the three differ](https://github.com/testyfishy/Diction/blob/live-text/FORK.md#pieces-live-text-and-true-streaming-are-three-different-things).
 
 ### Results
 
 **Short dictations** (16 clips of 17–28 s):
 
-![Short dictations: wrong words and speech-model time after stop, by mode](assets/hermes/short-results.svg)
+![Short dictations: wrong words and speech-model time after stop, by mode](assets/fork/short-results.svg)
 
 **Two-minute dictations** (8 clips of 103–124 s):
 
-![Two-minute dictations: wrong words and speech-model time after stop, by mode](assets/hermes/long-results.svg)
+![Two-minute dictations: wrong words and speech-model time after stop, by mode](assets/fork/long-results.svg)
 
 **Where to switch from whole to pieces** (130 dictations of 8–124 s, weighted by length mix):
 
-![Where to switch: wrong words and model time after stop for whole, pieces and each switch point](assets/hermes/switch-results.svg)
+![Where to switch: wrong words and model time after stop for whole, pieces and each switch point](assets/fork/switch-results.svg)
 
 - **Whole**: upstream behaviour, the whole recording is transcribed after stop.
   **Pieces**: transcribed at each pause during dictation, so only the last piece is left.
