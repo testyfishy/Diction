@@ -18,8 +18,8 @@ pieces   [ talk ...... | pause ...... | ........ ] stop → [ last piece ] → t
 **Live text** (`DICTION_PREVIEW=chunked`): draft words during dictation, for clients that ask
 (`?preview=cloud`). With it on, `/v1/models` advertises `"preview": true` in `capabilities`,
 and `"preview_opus": true` when ffmpeg is present to decode Opus sessions; a client asks only
-when it sees `preview`, and sends PCM unless `preview_opus` is also true. The current Diction
-app does not ask yet; it reads only the frame sent after "done".
+when it sees `preview`, and sends PCM unless `preview_opus` is also true. Diction for iOS asks
+from 15.0.1; older versions read only the frame sent after "done" and are unaffected.
 
 Both are off by default. If anything fails mid-way, the gateway sends the whole recording
 exactly as upstream does, so a dictation is never lost.
@@ -31,7 +31,7 @@ exactly as upstream does, so a dictation is never lost.
 | What it changes | how soon the **final** text is ready | what the user **sees during dictation** | how the **model** listens |
 | During dictation | nothing on screen | a draft about once a second, replaced each time | words appear as they are spoken |
 | After stop | 0.4–0.8 s, any length | final as without drafts | almost nothing left to do |
-| Needs client support | no | yes: the client must opt in and show drafts | yes, same as live text |
+| Needs client support | no | yes: the client must opt in and show drafts (Diction for iOS 15.0.1 and later) | yes, same as live text |
 | Needs the model to stream | no | no | yes |
 
 ```

@@ -1,11 +1,13 @@
-# Diction gateway fork: faster final text
+# Diction gateway fork: faster final text and live text
 
 > This is a fork of [DictionLabs/Diction](https://github.com/DictionLabs/Diction), changing only
 > the self-hosted gateway. For the app and the official gateway, use the original repository.
 
-**Not affiliated with DictionLabs.** This fork adds an optional "pieces" mode to Diction's
-self-hosted gateway: it transcribes at pauses during dictation, so after "done" only the last
-piece is left and the final text arrives in well under a second at any length. Benchmarks use
+**Not affiliated with DictionLabs.** This fork adds two optional modes to Diction's
+self-hosted gateway. **Pieces** transcribes at pauses during dictation, so after "done" only
+the last piece is left and the final text arrives in well under a second at any length.
+**Live text** sends draft words during dictation, one to two a second, to clients that ask.
+Both are off by default and work together. Benchmarks use
 Qwen3-ASR-1.7B served by GUFO on AMD Strix Halo.
 
 - **Code:** branch [`live-text`](https://github.com/testyfishy/Diction/tree/live-text);
@@ -17,28 +19,30 @@ Qwen3-ASR-1.7B served by GUFO on AMD Strix Halo.
 
 ### Pieces vs live text
 
-| | **Pieces** (this fork) | **Live text** (needs client support) |
+| | **Pieces** | **Live text** |
 |---|---|---|
 | What it changes | how soon the **final** text is ready | what the user **sees during dictation** |
-| During dictation | nothing on screen | a draft about once a second |
+| During dictation | nothing on screen | drafts, one to two a second |
 | After stop | text in 0.4–0.8 s at any length | the final replaces the draft |
-| Client change needed | no | yes: the client must opt in and show drafts |
+| Client | any | one that asks for drafts and shows them (Diction for iOS 15.0.1 and later) |
 
 **Pieces makes the final text ready sooner.** The gateway cuts the audio at pauses and
 transcribes each piece in the background during dictation. Nothing is shown until the user
 stops; then only the last piece is left, so the text arrives in 0.4–0.8 s instead of a wait
-that grows with the recording (about 14 s for two minutes in the benchmark). It works with the
-current app, which still receives a single final result.
+that grows with the recording (about 14 s for two minutes in the benchmark). It works with any
+client: the client still receives a single final result.
 
-**Live text shows draft words during dictation.** The client opts in (`?preview=cloud`), and
-about once a second the gateway sends the whole transcript so far; the final replaces it at
-the end. The current app reads only the frame after "done", so this needs client support. On
-its own it does not make the final faster.
+**Live text shows draft words during dictation.** The gateway advertises it on `/v1/models`;
+a client that sees it opts in (`?preview=cloud`), and the gateway sends the whole transcript
+so far each time a draft is ready; the final replaces it at the end. Diction for iOS asks
+from 15.0.1; older clients never ask and are unaffected. On its own it does not make the
+final faster, and in the tests it did not slow it or change its text.
 
-**The two combine:** drafts during dictation, pieces for a fast final. The gateway side of live
-text is implemented (`DICTION_PREVIEW=chunked`, PCM and Opus sessions). True word-by-word
-streaming needs a model that decodes as audio arrives; Qwen3-ASR as served by GUFO transcribes
-only on commit, so drafts on it are re-transcriptions about once a second.
+**The two combine:** drafts during dictation, pieces for a fast final
+(`DICTION_PREVIEW=chunked` with `DICTION_SEGMENTED_FINAL=true`, PCM and Opus sessions). True
+word-by-word streaming needs a model that decodes as audio arrives; Qwen3-ASR as served by
+GUFO transcribes only on commit, so drafts on it are re-transcriptions, each taking about
+0.4 s.
 [How the three differ](https://github.com/testyfishy/Diction/blob/live-text/FORK.md#pieces-live-text-and-true-streaming-are-three-different-things).
 
 ### Results
