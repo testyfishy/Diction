@@ -244,16 +244,17 @@ weighting).
 | `DICTION_SEGMENT_PAUSE_MS` / `_MIN_MS` / `_MAX_MS` | 700 / 8000 / 20000 | Where pieces are cut. |
 | `DICTION_SEGMENT_FIRST_MIN_MS` | `0` (= `_MIN_MS`) | First piece at least this long: shorter dictations go whole. 15000 measured best. |
 | `DICTION_PREVIEW_URL` / `_MODEL` | session backend | Optional faster backend for live text. |
+| `DICTION_PREVIEW_INTERVAL_MS` | `1000` | New audio needed before the next draft (minimum 250). One draft runs at a time, so the backend's own speed is the floor. |
 | `DICTION_DEBUG_STREAM` | `false` | Log timings per dictation (never audio, text or keys). |
 
 ## Build and run
 
-Tag `v15.0-fork.2` marks a fixed version of the code described here. Build the gateway image
+Tag `v15.0-fork.3` marks a fixed version of the code described here. Build the gateway image
 from the `gateway/` folder. Set `VERSION` to the upstream release: the app compares it with its own
 version, and the default `dev` is treated as an untagged build.
 
 ```sh
-git clone -b v15.0-fork.2 https://github.com/testyfishy/Diction.git
+git clone -b v15.0-fork.3 https://github.com/testyfishy/Diction.git
 docker build --build-arg VERSION=v15.0 -t diction-gateway:fork Diction/gateway
 ```
 
@@ -266,10 +267,25 @@ configuration was:
       DICTION_SEGMENTED_FINAL: "true"
       DICTION_SEGMENT_FIRST_MIN_MS: "15000"
       DICTION_PREVIEW: "chunked"        # live text, for clients that ask
+      DICTION_PREVIEW_INTERVAL_MS: "250" # drafts as fast as the backend answers
       DICTION_DEBUG_STREAM: "true"      # per-dictation timings in the log
 ```
 
 With every setting left off, the fork behaves like upstream `release/v15.0`.
+
+## Known limits
+
+- **Drafts are re-transcriptions, not streaming.** Each draft is a new transcription of the
+  open piece, so text trails speech by the backend's time per request, and a draft can revise
+  words it showed before.
+- **Drafts stop if a piece fails.** When a piece fails mid-dictation the session falls back to
+  the whole recording; the final text is unaffected, but no more drafts are sent.
+- **Drafts skip the backend prompt** when `DICTION_PREVIEW_URL` is set, so they can spell
+  terms differently from the final.
+- **A long stretch without pauses goes whole.** After 90 s with no pause to cut at, pieces
+  are abandoned for that session.
+- **Invented text is dropped, not repaired.** In pieces mode, an answer with more text than
+  the audio can hold (over 25 characters per second plus 20) gives an empty result.
 
 ## How the tests were done
 

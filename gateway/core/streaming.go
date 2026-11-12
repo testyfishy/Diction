@@ -20,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 )
@@ -1125,11 +1126,25 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					log.Printf("live: final ok=%v segments=%d segment_ms=%d wait=%dms tail=%.2fs tail_ms=%d",
 						ok, st.segments, st.segmentMs, st.waitMs, st.tailSec, st.tailMs)
 				}
+				if st.invented {
+					// The whole recording already came back as invented text (typically a
+					// near-silent clip answered with the backend's own prompt). Asking again
+					// would cost seconds for the same answer.
+					log.Printf("live: more text than %.2fs of audio can hold; empty result", st.tailSec)
+					segmented = true
+				}
 			}
 		}
 		live.close() // nothing may compete with the whole-clip request for the backend
 		if !segmented {
 			text, err = g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
+			// Pieces mode holds every piece to a plausibility bound; hold the whole clip
+			// to it too, so an invented answer is not typed into the user's text.
+			if err == nil && g.live.Segmented && audioDurationMs > 0 &&
+				int64(utf8.RuneCountInString(text)) > liveMaxCharsPerSec*audioDurationMs/1000+20 && !hasDegenerateRepetition(text) {
+				log.Printf("live: more text than %dms of audio can hold; empty result", audioDurationMs)
+				text = ""
+			}
 		}
 		sttMs := time.Since(sttStart).Milliseconds()
 		if err == nil && hasDegenerateRepetition(text) {

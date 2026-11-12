@@ -577,6 +577,10 @@ type liveFinish struct {
 	tailSec   float64
 	tailMs    int64
 	waitMs    int64 // time spent waiting for an in-flight segment after done
+	// invented: the tail was the whole recording and came back with more text than the
+	// audio can hold. The whole-clip request would send the same audio to the same
+	// backend, so the caller answers with no text instead.
+	invented bool
 }
 
 // Finish ends recording: it waits for an in-flight segment, transcribes the tail and
@@ -629,6 +633,7 @@ func (e *liveEngine) Finish(ctx context.Context) (string, bool, liveFinish) {
 		text, err := e.final(ctx, wav)
 		st.tailMs = time.Since(start).Milliseconds()
 		if err != nil || implausibleText(text, wav) {
+			st.invented = err == nil && st.segments == 0 && !hasDegenerateRepetition(text)
 			return "", false, st
 		}
 		if t := strings.TrimSpace(text); t != "" {

@@ -5,6 +5,25 @@ described in [FORK.md](FORK.md); bug fixes are tracked here. Fixes to unchanged 
 code are also kept on the `upstream-fixes` branch, based on upstream `main`, so they can be
 taken without the fork's features.
 
+## v15.0-fork.3
+
+### Fixes
+
+- **Invented text typed after a near-silent recording.** A backend can answer a very short or
+  near-silent clip with text it was never given in audio (for example its own prompt). In
+  pieces mode each piece was already held to a bound of 25 characters per second of audio
+  plus 20, but the whole-recording fallback was not, so the invented answer was returned
+  after a second, equally slow request.
+  - *Fix:* when the only piece is the whole recording and it breaks the bound, the gateway
+    returns an empty result without asking again; the whole-recording fallback is held to
+    the same bound. Applies only with `DICTION_SEGMENTED_FINAL=true`; with it off the
+    backend's answer is passed on as upstream does.
+  - *Tests:* `gateway/core/live_invented_test.go`.
+
+### Changed
+
+- Documented `DICTION_PREVIEW_INTERVAL_MS` and the known limits of live text.
+
 ## v15.0-fork.2
 
 ### Fixes
