@@ -124,8 +124,9 @@ type limitedStderrWriter struct {
 
 func (lw *limitedStderrWriter) Write(p []byte) (int, error) {
 	// The full length, taken before p is cut to fit: returning the cut length is a
-	// short write, which makes os/exec stop draining stderr, and the process then
-	// dies on SIGPIPE at its next warning.
+	// short write. os/exec then stops draining stderr and reports the short write as
+	// the command's error from Wait, even when the process itself finished cleanly;
+	// a process that keeps writing can also be killed by SIGPIPE.
 	n := len(p)
 	remaining := lw.cap - lw.buf.Len()
 	if remaining > 0 {
@@ -978,6 +979,14 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					decodedMs, oggMs, ffmpegWaitErr == nil, ffmpegStderr.buf.Len())
 				liveBroken = true
 			}
+		}
+		if g.debugStream && ffmpegCleaned && ffmpegStderr.buf.Len() > 0 {
+			// ffmpeg's own diagnostics about the stream format: no audio, text or keys.
+			first, _, _ := strings.Cut(strings.TrimSpace(ffmpegStderr.buf.String()), "\n")
+			if len(first) > 160 {
+				first = first[:160]
+			}
+			log.Printf("live: decoder stderr %d bytes (kept, cap %d), first line: %q", ffmpegStderr.buf.Len(), ffmpegStderr.cap, first)
 		}
 
 		// After draining, handle any write error that broke the read loop.
