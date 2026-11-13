@@ -47,6 +47,23 @@ GUFO transcribes only on commit, so drafts on it are re-transcriptions, each tak
 
 ### Results
 
+**Before and after** (upstream gateway v15.0 against this fork with pieces and live text on):
+
+![Before and after: wait for the final text and wrong words, upstream v15.0 against this fork, by dictation length](assets/fork/before-after.svg)
+
+- **Final text is faster at every length:** on all 30 clips, from 0.1 s sooner on short
+  dictations to 12.7 s → 0.4 s at two minutes.
+- **Drafts while talking:** the first after 0.94 s, then about two a second. Upstream shows
+  nothing until the final.
+- **Accuracy:** better on two-minute dictations (2.8% wrong words against 3.2%), worse on
+  15–30 s ones (5.9% against 4.7%). Per clip: fewer wrong words on 7, the same on 11, more
+  on 6.
+- **No fallbacks or errors** in 104 runs.
+  [Method and full table](https://github.com/testyfishy/Diction/blob/live-text/FORK.md#before-and-after-upstream-v150-against-the-fork).
+
+The sections below break this down by mode.
+
+
 **Short dictations** (16 clips of 17–28 s):
 
 ![Short dictations: wrong words and speech-model time after stop, by mode](assets/fork/short-results.svg)

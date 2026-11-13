@@ -327,6 +327,36 @@ BACKEND_URL=http://127.0.0.1:PORT BACKEND_MODEL=MODEL \
 
 The report prints timings and counts only, never transcript text.
 
+## Before and after: upstream v15.0 against the fork
+
+The published upstream image (`dictionlabs/gateway`, v15.0) and tag `v15.0-fork.3` with pieces
+and live text on, as two containers taking turns on every clip against one backend. The
+upstream client does not ask for live text; the fork client does. Same 30 clips and passes
+as the verification above (104 runs).
+
+![Before and after: wait for the final text and wrong words, upstream v15.0 against this fork, by dictation length](assets/fork/before-after.svg)
+
+| Length | Runs per image | Final wait, upstream (worst) | Final wait, fork (worst) | Fork: first draft | Wrong words, upstream | Wrong words, fork |
+|---|---|---|---|---|---|---|
+| under 5 s | 4 | 0.49 s (0.50) | 0.39 s (0.40) | 0.94 s | – | – |
+| 5–15 s | 8 | 0.80 s (1.05) | 0.70 s (0.95) | 0.94 s | – | – |
+| 15–30 s | 32 | 1.52 s (2.04) | 0.59 s (1.30) | 0.94 s | 4.7% | 5.9% |
+| over 60 s | 8 | 12.67 s (14.45) | 0.42 s (0.75) | 0.94 s | 3.2% | 2.8% |
+
+- **Speed:** the fork's final was faster on 30 of 30 clips.
+- **Accuracy, per clip with a reference script (24):** the fork had fewer wrong words on 7,
+  the same on 11, more on 6. It is better on long dictations and worse on 15–30 s ones,
+  where a piece cut at a pause loses some context; see
+  [Where to switch](#where-to-switch-whole-for-the-first-15-s-then-pieces).
+- **Reliability:** 0 fallbacks to the whole recording, 0 failed decode checks, 0 failed
+  pieces, 0 empty finals, 0 client errors.
+
+```sh
+BACKEND_URL=http://127.0.0.1:PORT BACKEND_MODEL=MODEL \
+  sh fork/bench/ab_upstream.sh UPSTREAM_IMAGE FORK_IMAGE CLIPS_DIR out.jsonl 2
+python3 fork/bench/ab_report.py out.jsonl CLIPS_DIR
+```
+
 ## Known limits
 
 - **Drafts are re-transcriptions, not streaming.** Each draft is a new transcription of the

@@ -24,6 +24,8 @@ taken without the fork's features.
 
 - Live-text verification: `fork/bench/live_text.sh`, `live_text_report.py` and
   `noisy_decoder.sh`, with results in [FORK.md](FORK.md#live-text-and-pieces-together-verification).
+- Before/after against the upstream image: `fork/bench/ab_upstream.sh`, `ab_report.py`,
+  with a summary figure (`assets/fork/before-after.svg`).
 
 ### Changed
 
