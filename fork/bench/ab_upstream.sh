@@ -6,7 +6,8 @@
 #   BACKEND_URL=http://127.0.0.1:PORT BACKEND_MODEL=MODEL [BACKEND_AUTH="Bearer x"] \
 #     ab_upstream.sh UPSTREAM_IMAGE FORK_IMAGE CLIPS_DIR OUT.jsonl [PASSES]
 #
-# Optional: PREVIEW_URL / PREVIEW_MODEL, INTERVAL_MS (default 250), FIRST_MIN_MS (15000).
+# Optional: PREVIEW_URL / PREVIEW_MODEL, INTERVAL_MS (default 250), FIRST_MIN_MS (15000),
+# PIECES=false (live text only: the final takes the upstream path).
 # Then: python3 ab_report.py OUT.jsonl CLIPS_DIR
 set -eu
 UP=$1 FORK=$2 CLIPS=$3 OUT=$4 PASSES=${5:-2}
@@ -31,7 +32,7 @@ run() { # label port file [client flags]
 
 start dg-ab-upstream "$UP" 8094
 # shellcheck disable=SC2086
-start dg-ab-fork "$FORK" 8095 -e DICTION_SEGMENTED_FINAL=true \
+start dg-ab-fork "$FORK" 8095 -e DICTION_SEGMENTED_FINAL="${PIECES:-true}" \
 	-e DICTION_SEGMENT_FIRST_MIN_MS="${FIRST_MIN_MS:-15000}" -e DICTION_PREVIEW=chunked \
 	-e DICTION_PREVIEW_INTERVAL_MS="${INTERVAL_MS:-250}" -e DICTION_DEBUG_STREAM=true \
 	${PREVIEW_URL:+-e DICTION_PREVIEW_URL=$PREVIEW_URL} ${PREVIEW_MODEL:+-e DICTION_PREVIEW_MODEL=$PREVIEW_MODEL}

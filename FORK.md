@@ -357,6 +357,34 @@ BACKEND_URL=http://127.0.0.1:PORT BACKEND_MODEL=MODEL \
 python3 fork/bench/ab_report.py out.jsonl CLIPS_DIR
 ```
 
+## Three ways to take this
+
+The parts are independent, so each can be used or merged without the others.
+
+| Part | What it is | How to get it |
+|---|---|---|
+| **Bug fix only** | The capped-stderr fix, on unchanged upstream code | branch [`upstream-fixes`](https://github.com/testyfishy/Diction/tree/upstream-fixes), on top of upstream `main` |
+| **Live text only** | Drafts during dictation; the final takes the upstream path, untouched | `DICTION_PREVIEW=chunked` |
+| **Live text + pieces** | Drafts during dictation and a fast final | `DICTION_PREVIEW=chunked` and `DICTION_SEGMENTED_FINAL=true` |
+
+**Live text only, against upstream v15.0** (same 30 clips, one pass, 60 runs; `PIECES=false`
+in `ab_upstream.sh`):
+
+| Length | Final wait, upstream | Final wait, fork | Fork: first draft | Drafts per second | Wrong words, upstream | Wrong words, fork |
+|---|---|---|---|---|---|---|
+| under 5 s | 0.49 s | 0.49 s | 0.94 s | 2.2 | – | – |
+| 5–15 s | 0.80 s | 0.80 s | 0.94 s | 2.3 | – | – |
+| 15–30 s | 1.52 s | 1.53 s | 0.94 s | 2.1 | 4.7% | 4.7% |
+| over 60 s | 12.68 s | 12.69 s | 0.94 s | 2.2 | 3.2% | 3.2% |
+
+The final text was the same as upstream's on 30 of 30 clips, with the same wait: the request
+for the final is the one upstream sends. Drafts arrived on 30 of 30. In this configuration
+the fork adds drafts and changes nothing else; pieces is what shortens the final.
+
+Drafts and pieces share one engine (`gateway/core/live.go`): it cuts the audio at pauses,
+re-transcribes the open piece for each draft, and, only with pieces on, also builds the final
+from the pieces.
+
 ## Known limits
 
 - **Drafts are re-transcriptions, not streaming.** Each draft is a new transcription of the

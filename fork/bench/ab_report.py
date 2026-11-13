@@ -39,7 +39,8 @@ def main():
         rate, nref = wer(ref, r["final"]) if ref else (0, 0)
         x = {"wait": r["done_to_result_ms"] / 1000, "wrong": rate * nref, "nref": nref,
              "first": ims[0]["at_ms"] / 1000 if ims else None,
-             "rate": len(ims) / (r["audio_ms"] / 1000), "empty": not words(r["final"])}
+             "rate": len(ims) / (r["audio_ms"] / 1000), "empty": not words(r["final"]),
+             "text": " ".join(words(r["final"]))}
         rows.setdefault((band(r["audio_ms"]), r["label"]), []).append(x)
         per_clip.setdefault(clip, {}).setdefault(r["label"], []).append(x)
 
@@ -58,10 +59,12 @@ def main():
             c_max = f"{max(x['wait'] for x in xs):.2f}s"
             print(f"{name:<11}{label:<10}{len(xs):>5}{c_wait:>12}{c_max:>9}{c_first:>13}{c_rate:>10}{c_wrong:>13}")
 
-    faster = slower = fewer = same = more = scored = 0
+    faster = slower = fewer = same = more = scored = ident = both = 0
     for clip, by in per_clip.items():
         if "upstream" not in by or "fork" not in by:
             continue
+        both += 1
+        ident += bool({x["text"] for x in by["upstream"]} & {x["text"] for x in by["fork"]})
         u, f = mean(x["wait"] for x in by["upstream"]), mean(x["wait"] for x in by["fork"])
         faster += f < u
         slower += f > u
@@ -74,6 +77,7 @@ def main():
     print()
     print(f"clips where the fork's final was faster: {faster} of {faster + slower}")
     print(f"clips with reference text ({scored}): fork has fewer wrong words on {fewer}, the same on {same}, more on {more}")
+    print(f"clips where both images gave the same final text: {ident} of {both}")
     print(f"empty finals: {sum(x['empty'] for xs in rows.values() for x in xs)}; client errors: {errors}")
     log = path + ".log"
     if os.path.exists(log):

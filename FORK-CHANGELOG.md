@@ -26,6 +26,8 @@ taken without the fork's features.
   `noisy_decoder.sh`, with results in [FORK.md](FORK.md#live-text-and-pieces-together-verification).
 - Before/after against the upstream image: `fork/bench/ab_upstream.sh`, `ab_report.py`,
   with a summary figure (`assets/fork/before-after.svg`).
+- Live text only (pieces off) against upstream: same final text and wait, results in
+  [FORK.md](FORK.md#three-ways-to-take-this).
 
 ### Changed
 
