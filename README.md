@@ -61,6 +61,10 @@ GUFO transcribes only on commit, so drafts on it are re-transcriptions, each tak
 - **No fallbacks or errors** in 104 runs.
   [Method and full table](https://github.com/testyfishy/Diction/blob/live-text/FORK.md#before-and-after-upstream-v150-against-the-fork).
 
+**Each part stands alone:** the bug fix, live text only (the final is exactly upstream's:
+same text on 30 of 30 clips, same wait), or live text with pieces.
+[Three ways to take this](https://github.com/testyfishy/Diction/blob/live-text/FORK.md#three-ways-to-take-this).
+
 The sections below break this down by mode.
 
 
